@@ -1,0 +1,47 @@
+"""Run registry (docs/03 §3, §5): one row per backtest run, so the number of configs tried is known for the
+Deflated Sharpe Ratio. Append-only CSV; a trial is a distinct config hash, however many times it was run."""
+import csv
+import hashlib
+import json
+import subprocess
+from datetime import UTC, datetime
+
+from ta.config import ROOT
+
+REGISTRY = ROOT / "runs" / "registry.csv"
+FIELDS = ["run_id", "created_utc", "git", "config_hash", "period", "pairs", "episodes", "filled", "note", "config"]
+
+
+def config_hash(cfg: dict) -> str:
+    return hashlib.sha1(json.dumps(cfg, sort_keys=True).encode()).hexdigest()[:8]
+
+
+def _git() -> str:
+    r = subprocess.run(["git", "-C", str(ROOT), "describe", "--always", "--dirty"], check=False, capture_output=True, text=True)
+    return r.stdout.strip() or "unknown"
+
+
+def record(run_id: str, cfg: dict, eps, pairs, period: str = "all", note: str = "", path=REGISTRY) -> None:
+    """Counts only: the registry never holds performance (docs/03: results are read in M4)."""
+    # shortcut: no file lock, fine for one process; add one if grid workers ever write rows in parallel
+    new = not path.exists()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", newline="") as fh:
+        w = csv.DictWriter(fh, FIELDS)
+        if new:
+            w.writeheader()
+        w.writerow({"run_id": run_id, "created_utc": datetime.now(UTC).isoformat(timespec="seconds"),
+                    "git": _git(), "config_hash": config_hash(cfg), "period": period, "pairs": " ".join(pairs),
+                    "episodes": len(eps), "filled": int((eps.status == "filled").sum()), "note": note,
+                    "config": json.dumps(cfg, sort_keys=True)})
+
+
+def rows(path=REGISTRY) -> list[dict]:
+    if not path.exists():
+        return []
+    with path.open(newline="") as fh:
+        return list(csv.DictReader(fh))
+
+
+def trials(path=REGISTRY) -> int:
+    return len({r["config_hash"] for r in rows(path)})

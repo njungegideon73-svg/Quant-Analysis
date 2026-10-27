@@ -182,3 +182,15 @@ def test_engine_prefix_invariance_on_real_data():
     assert (f.fill_ts[filled] == p.fill_ts[filled]).all()
     closed = filled & (f.exit_ts >= 0) & (f.exit_ts < D)
     assert np.allclose(f.R[closed], p.R[closed])
+
+
+def test_registry_counts_distinct_configs(tmp_path):
+    from ta.registry import record, rows, trials
+    reg = tmp_path / "registry.csv"
+    e = pd.DataFrame({"status": ["filled", "cancelled", "filled"]})
+    record("a", Config().to_dict(), e, ["EURUSD"], path=reg)
+    record("b", Config().to_dict(), e, ["EURUSD", "GBPUSD"], note="rerun", path=reg)
+    record("c", Config(b=0.2).to_dict(), e, ["EURUSD"], path=reg)
+    assert trials(reg) == 2
+    assert [r["filled"] for r in rows(reg)] == ["2"] * 3
+    assert "R" not in rows(reg)[0]  # counts only, never performance

@@ -37,7 +37,7 @@ Fixed in Stage A: `zone_pick=newest`, `min_stop_mode=skip`, `liq_veto=off`, `ses
 
 **Stage B (one-at-a-time filter tests, ≤ 14 configs).** Starting from the Stage A pick for each target type, flip each of `zone_pick`, `min_stop_mode`, `liq_veto`, `session`, `zone_body`, `htf_location` and `k∈{0.5}`, one at a time. A filter is adopted only if it improves EV **and** does not drop the trade count by more than 40%.
 
-**Trial budget:** ≤ 250 configs in total. Every run is logged in `runs/registry.duckdb`, and the count feeds the Deflated Sharpe Ratio (§5).
+**Trial budget:** ≤ 250 configs in total. Every run is logged in `runs/registry.csv` (`ta runs` prints the count of distinct configs), and the count feeds the Deflated Sharpe Ratio (§5).
 
 ## 4. Candidate selection rule (no "best cell" picking)
 
@@ -94,3 +94,4 @@ The forward test checks **implementation and execution**. In 3 months it **canno
 | 2026-10-27 | Zone candle steps back past rally candles (body ≥ 0.5·ATR); zone needs an open range ≥ 0.1·ATR after the impulse (no retest) | Faithfulness review round 1 ([05](05_FAITHFULNESS_REVIEW.md)), checked against JeaFx's own definitions. Charts only, no P&L seen. Thresholds fixed, not gridded | 0 |
 | 2026-10-27 | Open-range minimum 0.1 → 0.3·ATR | Faithfulness review round 2 ([05](05_FAITHFULNESS_REVIEW.md)): sub-0.3·ATR gaps (≤ 2 pips) are not a visible imbalance; applies the reviewer's rejections consistently. Charts only, no P&L seen | 0 |
 | 2026-10-27 | M3 engine clarifications: holiday blackout; order geometry fixed at zone creation; T2 ≥3R as a re-checked condition; a cancelled order ends the zone; blocked zones placed at the close of the exit bar | Needed to make docs/01 §5–§8 executable. Decided before any S1 result was looked at (the M3 runs printed counts only) | 0 |
+| 2026-10-27 | Run registry is `runs/registry.csv` (append-only) instead of DuckDB | Same content, no extra dependency; DuckDB can still query the CSV. The M3 smoke run is backfilled as trial 1 | 0 |

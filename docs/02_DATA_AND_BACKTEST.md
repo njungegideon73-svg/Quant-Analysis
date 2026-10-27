@@ -80,7 +80,7 @@ Broker-feed caveat: Dukascopy is an ECN feed, not Pepperstone's. Spreads and pri
 2. **Synthetic fixtures.** Hand-built bar sequences with a known pivot, BOS, zone, FVG and equal lows, covering every rule in 01. Expected outputs are asserted.
 3. **Fill-ordering tests.** Each row of the §5 table gets a unit test.
 4. **Sizing test.** Risk per trade = 0.5% ± rounding for every pair (including JPY and USD-base pairs) at random equity levels.
-5. **Hand audit.** 20 random trades are traced on charts against the raw M1 data.
+5. **Hand audit.** 20 random trades are traced on charts against the raw M1 data (`ta audit` → `reports/hand_audit.html`, re-traced by code that does not use the engine). M3 result: 20/20, and 571/571 research-period trades of the smoke run, including 25 Friday flattens. Injected errors (slip, commission, fill minute, stop level) are all caught.
 6. **Random-entry control.** The same stops/targets/costs with random entry times must show EV ≈ −costs. If the random strategy "makes money", the engine is wrong.
 
 ## 7. Outputs per run
@@ -88,4 +88,4 @@ Broker-feed caveat: Dukascopy is an ECN feed, not Pepperstone's. Spreads and pri
 - `runs/{run_id}/config.yaml`, the config's hash, and the data snapshot id (file hashes).
 - `trades.parquet` (one row per trade, all §12 fields from 01).
 - `report.html` with the equity curve in R, drawdown, the metric table, and per-pair/year/hour breakdowns.
-- A row in `runs/registry.duckdb` (every run, so the full test count is known for multiple-testing correction).
+- A row in `runs/registry.csv` (every run, so the full test count is known for multiple-testing correction).

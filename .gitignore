@@ -5,7 +5,8 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 data/
-runs/
+runs/*
+!runs/registry.csv
 live/
 reports/*
 !reports/run_download.sh

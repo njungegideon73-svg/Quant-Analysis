@@ -32,10 +32,17 @@ def main(argv=None) -> int:
 
     b = sub.add_parser("backtest", help="run S1 (default config) -> runs/<id>/episodes.parquet; prints counts only")
     b.add_argument("--pairs", nargs="+", default=PAIRS)
+    b.add_argument("--note", default="", help="why this run was made (stored in runs/registry.csv)")
+
+    sub.add_parser("runs", help="list registered runs and the trial count (distinct configs)")
 
     c = sub.add_parser("control", help="random-entry control: same stops/targets/costs, random entries")
     c.add_argument("--pairs", nargs="+", default=PAIRS)
     c.add_argument("--n", type=int, default=3000)
+
+    h = sub.add_parser("audit", help="re-trace 20 random trades of a run against raw M1 -> reports/hand_audit.html")
+    h.add_argument("--run", help="runs/<id> (default: the latest run)")
+    h.add_argument("--n", type=int, default=20)
 
     a = p.parse_args(argv)
     if a.cmd == "download":
@@ -60,26 +67,39 @@ def main(argv=None) -> int:
     if a.cmd == "backtest":
         from ta.backtest import run
         from ta.strategy import Config
-        print(_save_run(run(Config(), a.pairs), Config()))
+        print(_save_run(run(Config(), a.pairs), Config(), a.pairs, a.note))
+    if a.cmd == "runs":
+        from ta.registry import rows, trials
+        for r in rows():
+            print(f"{r['run_id']}  {r['git']:>16}  {r['period']:>8}  {r['pairs']:<24}  episodes={r['episodes']:>5}  "
+                  f"filled={r['filled']:>5}  {r['note']}")
+        print(f"trials (distinct configs): {trials()} of the 250 budget")
+    if a.cmd == "audit":
+        from pathlib import Path
+
+        from ta.audit import build
+        from ta.config import ROOT
+        print(build(Path(a.run) if a.run else max((ROOT / "runs").glob("2*")), a.n))
     if a.cmd == "control":
         _control(a.pairs, a.n)
     return 0
 
 
-def _save_run(eps, cfg) -> str:
-    """Store a run without printing performance (docs/03: results are only looked at in M4)."""
-    import hashlib
+def _save_run(eps, cfg, pairs, note="") -> str:
+    """Store and register a run without printing performance (docs/03: results are only looked at in M4)."""
     import json
+    from datetime import datetime
 
     from ta.config import ROOT
-    blob = json.dumps(cfg.to_dict(), sort_keys=True)
-    run_id = f"{__import__('datetime').datetime.now():%Y%m%d-%H%M%S}-{hashlib.sha1(blob.encode()).hexdigest()[:8]}"
+    from ta.registry import config_hash, record, trials
+    run_id = f"{datetime.now():%Y%m%d-%H%M%S}-{config_hash(cfg.to_dict())}"
     out = ROOT / "runs" / run_id
     out.mkdir(parents=True)
-    (out / "config.json").write_text(blob)
+    (out / "config.json").write_text(json.dumps(cfg.to_dict(), sort_keys=True))
     eps.to_parquet(out / "episodes.parquet")
+    record(run_id, cfg.to_dict(), eps, pairs, note=note)
     counts = eps.status.value_counts().to_dict()
-    return f"{out}  episodes={len(eps)}  " + "  ".join(f"{k}={v}" for k, v in counts.items())
+    return f"{out}  episodes={len(eps)}  " + "  ".join(f"{k}={v}" for k, v in counts.items()) + f"  trials={trials()}"
 
 
 def _control(pairs, n):
