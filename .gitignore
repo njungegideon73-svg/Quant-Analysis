@@ -1,0 +1,17 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+data/
+runs/
+live/
+reports/*
+!reports/run_download.sh
+research/subs/
+/jforex/target/
+# Raw JeaFx transcripts: copyrighted, kept local only (repo is public)
+research/transcripts/
+research/subs.log
+/jforex/logs/
