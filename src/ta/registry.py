@@ -45,3 +45,28 @@ def rows(path=REGISTRY) -> list[dict]:
 
 def trials(path=REGISTRY) -> int:
     return len({r["config_hash"] for r in rows(path)})
+
+
+def guard(period: str, cfgs: list[dict], unlock_holdout=False, path=REGISTRY) -> None:
+    """docs/03 §1 access rules: validation once per config and for at most 3 configs; hold-out opened once."""
+    done = [x for x in rows(path) if x["period"] == period]
+    hashes = {config_hash(c) for c in cfgs}
+    if period == "validation":
+        again = hashes & {x["config_hash"] for x in done}
+        if again:
+            raise PermissionError(f"validation already run for config(s) {sorted(again)}")
+        if len(hashes | {x["config_hash"] for x in done}) > 3:
+            raise PermissionError("validation is limited to 3 frozen candidates")
+    if period == "holdout" and (not unlock_holdout or done or len(hashes) > 1):
+        raise PermissionError("the hold-out is opened once, for one final candidate, with unlock_holdout=True")
+
+
+def save_run(eps, cfg: dict, pairs, period: str, note: str = "") -> str:
+    """Store and register a run without printing performance (docs/03: results are only looked at in M4)."""
+    run_id = f"{datetime.now():%Y%m%d-%H%M%S}-{config_hash(cfg)}"
+    out = ROOT / "runs" / run_id
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "config.json").write_text(json.dumps(cfg, sort_keys=True))
+    eps.to_parquet(out / "episodes.parquet")
+    record(run_id, cfg, eps, pairs, period, note)
+    return run_id

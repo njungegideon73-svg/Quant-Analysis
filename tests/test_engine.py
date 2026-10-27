@@ -194,3 +194,31 @@ def test_registry_counts_distinct_configs(tmp_path):
     assert trials(reg) == 2
     assert [r["filled"] for r in rows(reg)] == ["2"] * 3
     assert "R" not in rows(reg)[0]  # counts only, never performance
+
+
+def test_access_rules_for_validation_and_holdout(tmp_path):
+    from ta.registry import guard, record
+    reg, e = tmp_path / "registry.csv", pd.DataFrame({"status": ["filled"]})
+    cands = [Config(b=b).to_dict() for b in (0.05, 0.1, 0.2)]
+    guard("research", cands * 2, path=reg)  # research is unlimited
+    guard("validation", cands[:1], path=reg)
+    record("v1", cands[0], e, ["EURUSD"], "validation", path=reg)
+    with pytest.raises(PermissionError):
+        guard("validation", cands[:1], path=reg)  # once per candidate
+    with pytest.raises(PermissionError):
+        guard("validation", cands[1:] + [Config(K=48).to_dict()], path=reg)  # at most 3 candidates
+    with pytest.raises(PermissionError):
+        guard("holdout", cands[:1], path=reg)  # needs the explicit unlock
+    guard("holdout", cands[:1], unlock_holdout=True, path=reg)
+    record("h1", cands[0], e, ["EURUSD"], "holdout", path=reg)
+    with pytest.raises(PermissionError):
+        guard("holdout", cands[:1], unlock_holdout=True, path=reg)  # opened once
+
+
+@pytest.mark.skipif(not (DATA / "raw" / "dukascopy" / "EURUSD" / "2020-01.parquet").exists(), reason="needs EURUSD 2020")
+def test_research_load_holds_nothing_after_2019():
+    from ta.backtest import load
+    end = pd.Timestamp("2020-01-01", tz="UTC")
+    m15, h4, m1 = load("EURUSD", "research")
+    assert m15.close_ts.max() <= end and h4.close_ts.max() <= end and m1.ts.max() < end.value
+    assert m1.ts.min() < pd.Timestamp("2010-02-01", tz="UTC").value  # warm-up starts with the data

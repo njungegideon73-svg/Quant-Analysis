@@ -33,6 +33,13 @@ def main(argv=None) -> int:
     b = sub.add_parser("backtest", help="run S1 (default config) -> runs/<id>/episodes.parquet; prints counts only")
     b.add_argument("--pairs", nargs="+", default=PAIRS)
     b.add_argument("--note", default="", help="why this run was made (stored in runs/registry.csv)")
+    b.add_argument("--period", choices=["research", "validation", "holdout"], default="research")
+    b.add_argument("--unlock-holdout", action="store_true", help="the one permitted hold-out run (docs/03 §1)")
+
+    g = sub.add_parser("grid", help="Stage A grid (216 configs, docs/03 §3) on the research period; counts only")
+    g.add_argument("--pairs", nargs="+", default=PAIRS)
+    g.add_argument("--workers", type=int, default=4)
+    g.add_argument("--note", default="Stage A grid")
 
     sub.add_parser("runs", help="list registered runs and the trial count (distinct configs)")
 
@@ -67,7 +74,16 @@ def main(argv=None) -> int:
     if a.cmd == "backtest":
         from ta.backtest import run
         from ta.strategy import Config
-        print(_save_run(run(Config(), a.pairs), Config(), a.pairs, a.note))
+        print(_report(run(Config(), a.pairs, a.period, a.unlock_holdout), Config(), a.pairs, a.period, a.note))
+    if a.cmd == "grid":
+        import time
+
+        from ta.backtest import grid
+        from ta.strategy import stage_a
+        t0, cfgs = time.time(), stage_a()
+        for eps, cfg in zip(grid(cfgs, a.pairs, "research", a.workers), cfgs):
+            print(_report(eps, cfg, a.pairs, "research", a.note))
+        print(f"{len(cfgs)} configs in {time.time() - t0:.0f} s")
     if a.cmd == "runs":
         from ta.registry import rows, trials
         for r in rows():
@@ -85,21 +101,12 @@ def main(argv=None) -> int:
     return 0
 
 
-def _save_run(eps, cfg, pairs, note="") -> str:
-    """Store and register a run without printing performance (docs/03: results are only looked at in M4)."""
-    import json
-    from datetime import datetime
-
-    from ta.config import ROOT
-    from ta.registry import config_hash, record, trials
-    run_id = f"{datetime.now():%Y%m%d-%H%M%S}-{config_hash(cfg.to_dict())}"
-    out = ROOT / "runs" / run_id
-    out.mkdir(parents=True)
-    (out / "config.json").write_text(json.dumps(cfg.to_dict(), sort_keys=True))
-    eps.to_parquet(out / "episodes.parquet")
-    record(run_id, cfg.to_dict(), eps, pairs, note=note)
-    counts = eps.status.value_counts().to_dict()
-    return f"{out}  episodes={len(eps)}  " + "  ".join(f"{k}={v}" for k, v in counts.items()) + f"  trials={trials()}"
+def _report(eps, cfg, pairs, period, note) -> str:
+    """Counts only (docs/03: results are only looked at in M4)."""
+    from ta.registry import save_run, trials
+    run_id = save_run(eps, cfg.to_dict(), pairs, period, note)
+    counts = "  ".join(f"{k}={v}" for k, v in eps.status.value_counts().items())
+    return f"runs/{run_id}  {period}  episodes={len(eps)}  {counts}  trials={trials()}"
 
 
 def _control(pairs, n):

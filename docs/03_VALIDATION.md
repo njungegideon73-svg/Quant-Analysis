@@ -10,6 +10,8 @@ This document is **frozen before the first S1 backtest**. Changes after that are
 | 2020-01-01 → 2023-12-31 | **Validation.** Only frozen candidates (max 3) | One run per candidate |
 | 2024-01-01 → latest | **Hold-out.** Final confirmation | **Opened once**, for the final candidate only |
 
+Enforced in code (`ta.backtest.load`, `ta.registry.guard`). A run only loads data up to its period's end, so a research run cannot see 2020+. Earlier data is loaded as warm-up, and only zones created inside the period count. Validation refuses a config that already has a validation row, or a 4th candidate. The hold-out needs `--unlock-holdout` and refuses once any hold-out row exists.
+
 "Out-of-sample" (OOS) below means validation + hold-out (2020 → latest).
 
 ## 2. Internal walk-forward (inside 2010–2019)
@@ -95,3 +97,4 @@ The forward test checks **implementation and execution**. In 3 months it **canno
 | 2026-10-27 | Open-range minimum 0.1 → 0.3·ATR | Faithfulness review round 2 ([05](05_FAITHFULNESS_REVIEW.md)): sub-0.3·ATR gaps (≤ 2 pips) are not a visible imbalance; applies the reviewer's rejections consistently. Charts only, no P&L seen | 0 |
 | 2026-10-27 | M3 engine clarifications: holiday blackout; order geometry fixed at zone creation; T2 ≥3R as a re-checked condition; a cancelled order ends the zone; blocked zones placed at the close of the exit bar | Needed to make docs/01 §5–§8 executable. Decided before any S1 result was looked at (the M3 runs printed counts only) | 0 |
 | 2026-10-27 | Run registry is `runs/registry.csv` (append-only) instead of DuckDB | Same content, no extra dependency; DuckDB can still query the CSV. The M3 smoke run is backfilled as trial 1 | 0 |
+| 2026-10-27 | Period splits enforced in code; Stage A grid runner (`ta grid`) | docs/03 §1 access rules made mechanical. Grid timing measured with results discarded unseen (no trial used) | 0 |

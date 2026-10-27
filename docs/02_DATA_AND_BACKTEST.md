@@ -55,7 +55,7 @@ Broker-feed caveat: Dukascopy is an ECN feed, not Pepperstone's. Spreads and pri
 
 - **Driver.** It loops over M15 bar closes in time order across all 7 pairs (merged timeline), which keeps the portfolio limits realistic.
 - **Features.** Pivots, structure, zones, FVG and equal highs/lows are computed **incrementally** (each bar sees only the past). For speed, a vectorised/numba precompute is allowed *only* if a test proves it gives identical output to the incremental version.
-- **Speed.** Features depend only on (N, m, k), so they're computed once per combination and cached. The order/fill simulation per config is a numba kernel. Runs fan out across 4 cores by (pair × config). The target is the full S1 grid ([03 §3](03_VALIDATION.md)) in < 2 h on this machine.
+- **Speed.** Features depend only on (N, m, k, zone_body, session, liq_veto), so each pair builds them once per distinct set: 6 builds for the 216 Stage A configs. Workers split by pair (`ta grid`, 4 cores). No numba is needed. Measured at M3: 216 configs × 3 pairs × 2010–2019 takes about 4 min (pair work 133–160 s, portfolio replays 71 s; about 1 GB per worker). That projects to about 8 min for 7 pairs, against the < 2 h target.
 
 ## 5. Fill & cost model (pessimistic by design)
 

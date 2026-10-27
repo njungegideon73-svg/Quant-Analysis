@@ -6,13 +6,19 @@ actually happen: one pending order or position per pair (the newest zone replace
 `max_open` positions, and at most `max_ccy` positions with the same directional exposure to one currency.
 """
 import heapq
+from concurrent.futures import ProcessPoolExecutor
+from itertools import repeat
 
 import numpy as np
 import pandas as pd
 
 from ta.broker import M1, Costs, exit_trade, first_fill, trade_r
-from ta.config import PAIRS, pip_size
-from ta.strategy import Config, episodes, prepare
+from ta.config import DATA, PAIRS, pip_size
+from ta.data.store import read_m1
+from ta.registry import guard
+from ta.strategy import Config, episodes, prepare_frames
+
+PERIODS = {"research": (2010, 2019), "validation": (2020, 2023), "holdout": (2024, 2100)}  # docs/03 §1
 
 M15_NS = 15 * 60 * 10**9
 
@@ -104,10 +110,41 @@ def _room(open_pos: dict, pair: str, d: int, cfg: Config) -> bool:
     return all(expo.count(x) < cfg.max_ccy for x in ((pair[:3], d), (pair[3:], -d)))
 
 
-def run(cfg: Config, pairs=PAIRS) -> pd.DataFrame:
+def load(pair: str, period: str, root=DATA):
+    """M15, H4 and M1 for a period: everything from the first year (warm-up) up to the period's end, nothing after."""
+    end = pd.Timestamp(f"{PERIODS[period][1] + 1}-01-01", tz="UTC")
+    m15, h4 = (pd.read_parquet(root / "derived" / pair / f"{tf}.parquet") for tf in ("M15", "H4"))
+    raw = read_m1(pair, years=range(2000, PERIODS[period][1] + 1), root=root)
+    return m15[m15.close_ts <= end].reset_index(drop=True), h4[h4.close_ts <= end].reset_index(drop=True), \
+        M1.from_frame(raw[raw.ts < end].sort_values("ts").reset_index(drop=True))
+
+
+def pair_runs(pair: str, cfgs: list[Config], period: str) -> list[pd.DataFrame]:
+    """resolve() for every config on one pair. Features only depend on a few params, so they are built once per
+    distinct set (the Stage A grid needs 6 builds for 216 configs). Episodes are kept if their zone is in the period."""
+    m15, h4, m1 = load(pair, period)
+    start = pd.Timestamp(f"{PERIODS[period][0]}-01-01", tz="UTC").value
+    feats, out = {}, []
+    for cfg in cfgs:
+        key = (cfg.N, cfg.k, cfg.m, cfg.zone_body, cfg.N_h4, cfg.session, cfg.liq_veto)
+        if key not in feats:
+            feats[key] = prepare_frames(pair, m15, h4, cfg)
+        r = resolve(feats[key], m1, cfg)
+        out.append(r[r.zone_ts >= start].reset_index(drop=True))
+    return out
+
+
+def grid(cfgs: list[Config], pairs=PAIRS, period: str = "research", workers: int = 4, unlock_holdout=False):
+    """All configs on all pairs, one worker per pair -> one portfolio-level episodes frame per config."""
+    guard(period, [c.to_dict() for c in cfgs], unlock_holdout)
+    with ProcessPoolExecutor(min(workers, len(pairs))) as ex:
+        per_pair = list(ex.map(pair_runs, pairs, repeat(cfgs), repeat(period)))
+    return [portfolio(pd.concat([pp[i] for pp in per_pair], ignore_index=True), c) for i, c in enumerate(cfgs)]
+
+
+def run(cfg: Config, pairs=PAIRS, period: str = "research", unlock_holdout=False) -> pd.DataFrame:
     """Full S1 run: all episodes with their portfolio status. Trades are the rows with status == 'filled'."""
-    parts = [resolve(prepare(p, cfg), M1.load(p), cfg) for p in pairs]
-    return portfolio(pd.concat(parts, ignore_index=True), cfg)
+    return grid([cfg], pairs, period, unlock_holdout=unlock_holdout)[0]
 
 
 def random_control(f: dict, m1: M1, cfg: Config, n: int = 3000, seed: int = 0, stop_atr: float = 1.5) -> pd.DataFrame:

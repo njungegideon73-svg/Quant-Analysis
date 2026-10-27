@@ -5,6 +5,7 @@ the order stops being valid, and the first M15 bar where it could fill. One-setu
 limits are applied afterwards (backtest.py). An order placed at the close of bar p can fill from bar p+1.
 """
 from dataclasses import asdict, dataclass
+from itertools import product
 
 import numpy as np
 import pandas as pd
@@ -49,6 +50,12 @@ class Config:
 
     def to_dict(self):
         return asdict(self)
+
+
+def stage_a() -> list[Config]:
+    """The declared Stage A grid (docs/03 §3): 216 configs, filters at their defaults."""
+    return [Config(N=N, m=m, b=b, K=K, entry_at=e, target=t) for N, m, b, K, e, t in
+            product((2, 3, 5), (1.0, 1.5), (0.05, 0.10, 0.20), (48, 96, 192), ("proximal", "mid"), ("T1", "T2"))]
 
 
 def blackout_days(start, end) -> tuple[set, set]:
