@@ -30,6 +30,13 @@ def main(argv=None) -> int:
     v.add_argument("--seed", type=int, default=20261027)
     v.add_argument("--out", default="reports/faithfulness_review.html")
 
+    b = sub.add_parser("backtest", help="run S1 (default config) -> runs/<id>/episodes.parquet; prints counts only")
+    b.add_argument("--pairs", nargs="+", default=PAIRS)
+
+    c = sub.add_parser("control", help="random-entry control: same stops/targets/costs, random entries")
+    c.add_argument("--pairs", nargs="+", default=PAIRS)
+    c.add_argument("--n", type=int, default=3000)
+
     a = p.parse_args(argv)
     if a.cmd == "download":
         from ta.data.dukascopy import download
@@ -50,7 +57,45 @@ def main(argv=None) -> int:
 
         from ta.review import build
         print(build({k: int(n) for k, n in (s.split("=") for s in a.sample)}, a.seed, Path(a.out)))
+    if a.cmd == "backtest":
+        from ta.backtest import run
+        from ta.strategy import Config
+        print(_save_run(run(Config(), a.pairs), Config()))
+    if a.cmd == "control":
+        _control(a.pairs, a.n)
     return 0
+
+
+def _save_run(eps, cfg) -> str:
+    """Store a run without printing performance (docs/03: results are only looked at in M4)."""
+    import hashlib
+    import json
+
+    from ta.config import ROOT
+    blob = json.dumps(cfg.to_dict(), sort_keys=True)
+    run_id = f"{__import__('datetime').datetime.now():%Y%m%d-%H%M%S}-{hashlib.sha1(blob.encode()).hexdigest()[:8]}"
+    out = ROOT / "runs" / run_id
+    out.mkdir(parents=True)
+    (out / "config.json").write_text(blob)
+    eps.to_parquet(out / "episodes.parquet")
+    counts = eps.status.value_counts().to_dict()
+    return f"{out}  episodes={len(eps)}  " + "  ".join(f"{k}={v}" for k, v in counts.items())
+
+
+def _control(pairs, n):
+    import numpy as np
+
+    from ta.backtest import random_control
+    from ta.broker import M1
+    from ta.strategy import Config, prepare
+    cfg = Config()
+    for pair in pairs:
+        r = random_control(prepare(pair, cfg), M1.load(pair), cfg, n=n)
+        se = r.R.std() / np.sqrt(len(r))
+        gap = r.R.mean() + r.cost_R.mean()
+        print(f"{pair}: n={len(r)}  mean R {r.R.mean():+.3f} (±{1.96 * se:.3f})  expected -cost {-r.cost_R.mean():+.3f}  "
+              f"gross {r.R_gross.mean():+.3f}  win {np.mean(r.reason == 'target'):.1%}  "
+              f"{'OK' if abs(gap) < 1.96 * se else 'CHECK'}", flush=True)
 
 
 if __name__ == "__main__":

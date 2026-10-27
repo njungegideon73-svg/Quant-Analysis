@@ -85,6 +85,8 @@ A zone is **valid** while all of these hold:
 | Target T2 (structural) | `leg_high` at fill time (the swing JeaFx targets). **Skip if < 3R** (his rule). Not capped. |
 | Size | `units = floor(0.005·equity / (stop distance × pip value in USD))` |
 | Placement | At the close of the bar where all §5 conditions first hold. Re-checked every M15 close; cancelled as soon as any condition fails. |
+| Geometry | Entry, stop, T1 and the floor/cap checks use ATR at zone creation and are fixed for the life of the zone. T2 is re-evaluated each close (`leg_high` only rises), and the ≥3R test is one of the conditions re-checked at each close. |
+| Cancellation | A cancelled order ends the zone. It is not re-placed if the conditions recover. A zone that becomes valid while the pair has a position is placed at the close of the bar where that position exits, if it is still valid and untouched. |
 | Fill window | Fills are allowed only within the session window (§8). Outside it the order is inactive. |
 
 There is **no trade management** in the baseline: set-and-forget, target or stop. Variants for later phases (not in the M4 grid): breakeven after the next continuation BOS, and a 50% partial at 2R.
@@ -101,6 +103,7 @@ There is **no trade management** in the baseline: set-and-forget, target or stop
 | Session window for fills | 07:00–17:00 Europe/London (London + NY overlap) | `session ∈ {london_ny, all}` |
 | Rollover blackout | No fills 16:45–17:30 America/New_York | fixed |
 | Weekend | No fills after Fri 15:00 NY; flatten open positions Fri 16:30 NY at market | fixed |
+| Holidays | No fills, and no zones created, on US federal holidays (NY date), UK bank holidays (Good Friday, Easter Monday, May and August bank holidays; London date) or Dec 24 – Jan 2 | fixed (review round 2, [05](05_FAITHFULNESS_REVIEW.md)) |
 | News | **Not in the baseline** (no point-in-time calendar yet). Added later as an A/B filter once a historical high-impact calendar is sourced (see 02 §2). | — |
 
 ## 9. Liquidity veto (A/B filter)
