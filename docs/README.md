@@ -10,6 +10,7 @@ Phase 1 findings: [../research/RESEARCH_REPORT.md](../research/RESEARCH_REPORT.m
 | [02_DATA_AND_BACKTEST.md](02_DATA_AND_BACKTEST.md) | Data sources, storage, quality checks, backtest engine, fill and cost model |
 | [03_VALIDATION.md](03_VALIDATION.md) | Data splits, parameter grid, statistics, pass/fail criteria, forward test |
 | [04_EXECUTION_AND_INFRA.md](04_EXECUTION_AND_INFRA.md) | Forward test on Dukascopy JForex demo (Pepperstone cTrader as the live alternative), risk controls, kill switch, repo layout, ops |
+| [05_FAITHFULNESS_REVIEW.md](05_FAITHFULNESS_REVIEW.md) | M2 review rounds: your verdicts vs the transcript counter-check, and the rule fixes they led to |
 
 ---
 

@@ -9,6 +9,9 @@ import numpy as np
 import pandas as pd
 from numpy.lib.stride_tricks import sliding_window_view as win
 
+RALLY_BODY = 0.5  # an in-direction candle with body >= this·ATR is part of the rally, not the zone candle
+OPEN_MIN = 0.3  # open range the zone must keep after the impulse, in ATR (review rounds 1-2: smaller is not visible)
+
 
 def atr(h, l, c, n=14):
     """Wilder ATR(n); NaN until n true ranges exist."""
@@ -85,7 +88,8 @@ def structure(h, l, c, piv: pd.DataFrame):
 
 def zones(o, h, l, c, events: pd.DataFrame, atr_, m, zone_body=False) -> pd.DataFrame:
     """One zone per BOS (§4). The FVG may complete on the bar after the BOS, so `t` (creation) is the BOS
-    close, or the next close when only that bar completes the gap. A BOS with no impulse or no FVG gives none."""
+    close, or the next close when only that bar completes the gap. A BOS with no impulse or no FVG gives none,
+    and so does one whose zone was retested after the impulse (no open range of at least OPEN_MIN·ATR left)."""
     rows, n = [], len(c)
     for e in events.itertuples(index=False):
         d, tb, org = e.dir, e.t, e.origin
@@ -94,18 +98,25 @@ def zones(o, h, l, c, events: pd.DataFrame, atr_, m, zone_body=False) -> pd.Data
         if not ok.any():
             continue
         j = js[ok.argmax()]
-        z = j - 1  # "last candle before the impulse"
+        z = j - 1  # "last candle before the impulse": the small candle before the rally, not a rally candle
+        while z > org and (c[z] - o[z]) * d >= RALLY_BODY * atr_[z]:
+            z -= 1
         ks = np.arange(j, min(tb + 1, n - 1))  # all three FVG candles inside [j-1, tb+1]
         fvg = l[ks + 1] > h[ks - 1] if d == 1 else h[ks + 1] < l[ks - 1]
         if not fvg.any():
             continue
         k = ks[fvg.argmax()]
+        created = max(tb, k + 1)
         if d == 1:
             lo, hi = l[org:j].min(), max(o[z], c[z]) if zone_body else h[z]
         else:
             lo, hi = min(o[z], c[z]) if zone_body else l[z], h[org:j].max()
-        rows.append((max(tb, k + 1), tb, d, e.kind, org, j, z, lo, hi, k))
-    cols = ["t", "t_bos", "dir", "kind", "origin", "impulse", "zone_bar", "low", "high", "fvg_bar"]
+        after = slice(j + 1, created + 1)  # JeaFx's imbalance: price left the zone and has not come back
+        gap = l[after].min() - hi if d == 1 else lo - h[after].max()
+        if not gap >= OPEN_MIN * atr_[created]:
+            continue
+        rows.append((created, tb, d, e.kind, org, j, z, lo, hi, k, gap))
+    cols = ["t", "t_bos", "dir", "kind", "origin", "impulse", "zone_bar", "low", "high", "fvg_bar", "open_range"]
     return pd.DataFrame(rows, columns=cols)
 
 

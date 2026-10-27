@@ -27,6 +27,8 @@ def main(argv=None) -> int:
 
     v = sub.add_parser("review", help="chart 30 random S1 candidates -> reports/faithfulness_review.html")
     v.add_argument("--sample", nargs="+", default=["EURUSD=24", "USDJPY=6"], help="PAIR=count ...")
+    v.add_argument("--seed", type=int, default=20261027)
+    v.add_argument("--out", default="reports/faithfulness_review.html")
 
     a = p.parse_args(argv)
     if a.cmd == "download":
@@ -44,8 +46,10 @@ def main(argv=None) -> int:
         from ta.data.quality import write_report
         print(write_report(a.pairs))
     if a.cmd == "review":
+        from pathlib import Path
+
         from ta.review import build
-        print(build({k: int(n) for k, n in (s.split("=") for s in a.sample)}))
+        print(build({k: int(n) for k, n in (s.split("=") for s in a.sample)}, a.seed, Path(a.out)))
     return 0
 
 

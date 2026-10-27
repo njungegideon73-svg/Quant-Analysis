@@ -110,3 +110,27 @@ def test_prefix_invariance_random_walk():
     fl.loc[fl.swept >= D, "swept"] = -1  # sweeps after D are unknown at D
     pd.testing.assert_frame_equal(fl, pre[5])
     assert len(full[2]) > 50 and len(full[4]) > 5 and len(full[5]) > 5  # the check is not vacuous
+
+
+def bars(rows):
+    o, h, l, c = (np.array(x, dtype=float) for x in zip(*rows))
+    return o, h, l, c
+
+
+def test_zone_rejected_when_retested_after_impulse():
+    # zone candle @1 (high 1.1), impulse @2, bar 3 wicks back into the zone, the FVG only forms at k=3
+    o, h, l, c = bars([(0.95, 1.0, 0.9, 0.95), (0.95, 1.1, 0.8, 0.9), (0.9, 1.55, 0.88, 1.5),
+                       (1.5, 1.5, 1.05, 1.4), (1.4, 1.8, 1.6, 1.75)])
+    ev = pd.DataFrame({"t": [4], "dir": [1], "kind": ["cont"], "origin": [1]})
+    assert zones(o, h, l, c, ev, np.full(5, 0.1), m=1.0).empty
+    l[3] = 1.2  # no retest: the open range above the zone survives
+    assert zones(o, h, l, c, ev, np.full(5, 0.1), m=1.0).open_range[0] == pytest.approx(0.1)
+
+
+def test_zone_candle_skips_rally_candles():
+    # @2 is already a rally candle (body 0.08 >= 0.5·ATR), so the zone is the small candle @1 before it
+    o, h, l, c = bars([(0.95, 1.0, 0.9, 0.95), (0.95, 0.97, 0.8, 0.92), (0.92, 1.02, 0.91, 1.0),
+                       (1.0, 1.55, 0.99, 1.5), (1.5, 1.7, 1.1, 1.6)])
+    ev = pd.DataFrame({"t": [4], "dir": [1], "kind": ["cont"], "origin": [1]})
+    z = zones(o, h, l, c, ev, np.full(5, 0.1), m=1.0)
+    assert z[["zone_bar", "impulse", "low", "high"]].values.tolist() == [[1, 3, 0.8, 0.97]]

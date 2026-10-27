@@ -51,10 +51,12 @@ on bar close c at bar t:
 At each bullish BOS at bar `t_b`, with `o = leg_origin`:
 
 1. **Impulse start.** `j` = the first bar in `(o, t_b]` that is bullish with `body ≥ m·ATR_M15` *(param m ∈ {1.0, 1.5})*. If none exists, there is no zone.
-2. **Zone candle** = `j − 1`, the *"last candle before the impulse"*. Because `j−1 ≥ o`, the leg's extreme is always included.
-3. **Zone** = `[zone_low, zone_high]` with `zone_low = min(low[o .. j−1])` and `zone_high = high[j−1]`. This is wick-to-wick, extended over the origin wick.
-   - Variant *(param zone_body)*: `zone_high = max(open, close)[j−1]`.
-4. **Imbalance required.** At least one bullish 3-candle FVG in `[j−1, t_b+1]`, i.e. `low[k+1] > high[k−1]` for some k. If there is none, there is no zone. The window reaches one bar past the BOS because, when the impulse candle *is* the BOS candle, the gap can only complete on the next bar (34% of BOS on EURUSD 2010–12).
+2. **Zone candle** `z`: start at `j − 1` and step back while `z > o` and candle `z` is itself bullish with `body ≥ 0.5·ATR_M15` (fixed). JeaFx's *"last candle before the impulse"* is the *"small candle before a large rally away"*, often an indecision candle, so a candle that is already part of the rally is not the zone. `z ≥ o` always.
+3. **Zone** = `[zone_low, zone_high]` with `zone_low = min(low[o .. j−1])` and `zone_high = high[z]`. This is wick-to-wick, extended over the origin wick.
+   - Variant *(param zone_body)*: `zone_high = max(open, close)[z]`.
+4. **Imbalance required.** At least one bullish 3-candle FVG in `[j−1, t_b+1]`, i.e. `low[k+1] > high[k−1]` for some k. If there is none, there is no zone.
+   - **Open range (no retest).** Every bar after the impulse up to creation must stay clear of the zone: `min(low[j+1 .. created]) − zone_high ≥ 0.3·ATR_M15` (fixed; set by review rounds 1–2, see 05). This is JeaFx's own test of imbalance: *"the open price range is left open and the demand zone hasn't been retested"*. A zone that was wicked back into before price left has no imbalance.
+   - The window reaches one bar past the BOS because, when the impulse candle *is* the BOS candle, the gap can only complete on the next bar (34% of BOS on EURUSD 2010–12).
 5. The zone is **created at the close of `t_b`**, or at the close of `t_b+1` when only that bar completes the FVG. No order may exist before that.
 
 ## 5. Zone life cycle
