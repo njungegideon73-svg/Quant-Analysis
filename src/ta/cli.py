@@ -51,6 +51,11 @@ def main(argv=None) -> int:
     h.add_argument("--run", help="runs/<id> (default: the latest run)")
     h.add_argument("--n", type=int, default=20)
 
+    rp = sub.add_parser("report", help="runs/<id>/report.html: equity, drawdown, metrics (M4 on: shows performance)")
+    rp.add_argument("--run", required=True)
+
+    sub.add_parser("data-manifest", help="write data_manifest.csv: SHA-256 of every stored M1 month (runs verify it)")
+
     x = sub.add_parser("jforex-check", help="replay a run's orders in Dukascopy's JForex tester; compare fills/exits")
     x.add_argument("--run", help="runs/<id> (default: the latest research run of the default config)")
     x.add_argument("--n-fill", type=int, default=30)
@@ -79,17 +84,30 @@ def main(argv=None) -> int:
         print(build({k: int(n) for k, n in (s.split("=") for s in a.sample)}, a.seed, Path(a.out)))
     if a.cmd == "backtest":
         from ta.backtest import run
+        from ta.data.store import verified_snapshot
         from ta.strategy import Config
-        print(_report(run(Config(), a.pairs, a.period, a.unlock_holdout), Config(), a.pairs, a.period, a.note))
+        snap = verified_snapshot()
+        print(_report(run(Config(), a.pairs, a.period, a.unlock_holdout), Config(), a.pairs, a.period, a.note, snap))
     if a.cmd == "grid":
         import time
 
         from ta.backtest import grid
+        from ta.data.store import verified_snapshot
         from ta.strategy import stage_a
-        t0, cfgs = time.time(), stage_a()
+        t0, cfgs, snap = time.time(), stage_a(), verified_snapshot()
         for eps, cfg in zip(grid(cfgs, a.pairs, "research", a.workers), cfgs):
-            print(_report(eps, cfg, a.pairs, "research", a.note))
+            print(_report(eps, cfg, a.pairs, "research", a.note, snap))
         print(f"{len(cfgs)} configs in {time.time() - t0:.0f} s")
+    if a.cmd == "report":
+        from pathlib import Path
+
+        from ta.report import build
+        print(build(Path(a.run)))
+    if a.cmd == "data-manifest":
+        from ta.data.store import MANIFEST, manifest
+        m = manifest()
+        m.to_csv(MANIFEST, index=False)
+        print(f"{MANIFEST.name}: {len(m)} files")
     if a.cmd == "runs":
         from ta.registry import rows, trials
         for r in rows():
@@ -116,10 +134,10 @@ def main(argv=None) -> int:
     return 0
 
 
-def _report(eps, cfg, pairs, period, note) -> str:
+def _report(eps, cfg, pairs, period, note, data="") -> str:
     """Counts only (docs/03: results are only looked at in M4)."""
     from ta.registry import save_run, trials
-    run_id = save_run(eps, cfg.to_dict(), pairs, period, note)
+    run_id = save_run(eps, cfg.to_dict(), pairs, period, note, data)
     counts = "  ".join(f"{k}={v}" for k, v in eps.status.value_counts().items())
     return f"runs/{run_id}  {period}  episodes={len(eps)}  {counts}  trials={trials()}"
 

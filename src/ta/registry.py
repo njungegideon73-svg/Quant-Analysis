@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from ta.config import ROOT
 
 REGISTRY = ROOT / "runs" / "registry.csv"
-FIELDS = ["run_id", "created_utc", "git", "config_hash", "period", "pairs", "episodes", "filled", "note", "config"]
+FIELDS = ["run_id", "created_utc", "git", "config_hash", "period", "pairs", "episodes", "filled", "note", "config", "data"]
 
 
 def config_hash(cfg: dict) -> str:
@@ -21,7 +21,7 @@ def _git() -> str:
     return r.stdout.strip() or "unknown"
 
 
-def record(run_id: str, cfg: dict, eps, pairs, period: str = "all", note: str = "", path=REGISTRY) -> None:
+def record(run_id: str, cfg: dict, eps, pairs, period: str = "all", note: str = "", path=REGISTRY, data: str = "") -> None:
     """Counts only: the registry never holds performance (docs/03: results are read in M4)."""
     # shortcut: no file lock, fine for one process; add one if grid workers ever write rows in parallel
     new = not path.exists()
@@ -33,7 +33,7 @@ def record(run_id: str, cfg: dict, eps, pairs, period: str = "all", note: str = 
         w.writerow({"run_id": run_id, "created_utc": datetime.now(UTC).isoformat(timespec="seconds"),
                     "git": _git(), "config_hash": config_hash(cfg), "period": period, "pairs": " ".join(pairs),
                     "episodes": len(eps), "filled": int((eps.status == "filled").sum()), "note": note,
-                    "config": json.dumps(cfg, sort_keys=True)})
+                    "config": json.dumps(cfg, sort_keys=True), "data": data})
 
 
 def rows(path=REGISTRY) -> list[dict]:
@@ -61,12 +61,12 @@ def guard(period: str, cfgs: list[dict], unlock_holdout=False, path=REGISTRY) ->
         raise PermissionError("the hold-out is opened once, for one final candidate, with unlock_holdout=True")
 
 
-def save_run(eps, cfg: dict, pairs, period: str, note: str = "") -> str:
+def save_run(eps, cfg: dict, pairs, period: str, note: str = "", data: str = "") -> str:
     """Store and register a run without printing performance (docs/03: results are only looked at in M4)."""
     run_id = f"{datetime.now():%Y%m%d-%H%M%S}-{config_hash(cfg)}"
     out = ROOT / "runs" / run_id
     out.mkdir(parents=True, exist_ok=True)
     (out / "config.json").write_text(json.dumps(cfg, sort_keys=True))
     eps.to_parquet(out / "episodes.parquet")
-    record(run_id, cfg, eps, pairs, period, note)
+    record(run_id, cfg, eps, pairs, period, note, data=data)
     return run_id

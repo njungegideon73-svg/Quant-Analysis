@@ -243,3 +243,18 @@ def test_crosscheck_live_windows_and_cache_holes(tmp_path, monkeypatch):
     monkeypatch.setattr(cc, "read_m1", lambda pair, years: pd.DataFrame(
         {"ts": pd.to_datetime(["2024-01-09 10:05", "2024-01-09 11:05"], utc=True)}))
     assert [f.name for f in cc.holes(od)[0]] == ["10h_ticks.bi5"]
+
+
+def test_report_metrics_and_page(tmp_path):
+    from ta.report import build, metrics
+    m = metrics(pd.Series([3.0, -1.0, -1.0, -1.0, 3.0, -1.0]))
+    assert (m["trades"], m["win rate"], m["total (R)"], m["max drawdown (R)"], m["longest losing run"]) == (6, 2 / 6, 2.0, -3.0, 3)
+    assert m["profit factor"] == pytest.approx(1.5)
+    ts = pd.date_range("2015-01-05 09:00", periods=6, freq="7D", tz="UTC").as_unit("ns").asi8
+    eps = pd.DataFrame({"status": ["filled"] * 6 + ["cancelled"], "pair": ["EURUSD", "USDJPY"] * 3 + ["EURUSD"],
+                        "fill_ts": list(ts) + [-1], "exit_ts": list(ts + 3_600_000_000_000) + [-1],
+                        "R": [3.0, -1.0, -1.0, -1.0, 3.0, -1.0, 0.0]})
+    eps.to_parquet(tmp_path / "episodes.parquet")
+    (tmp_path / "config.json").write_text("{}")
+    page = build(tmp_path).read_text()
+    assert "6 closed trades" in page and "<b>met</b>" in page and "USDJPY" in page  # 33% wins, +0.33R

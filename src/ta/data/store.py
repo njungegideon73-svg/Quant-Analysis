@@ -1,10 +1,12 @@
 """Parquet layout for raw M1 bid/ask data: data/raw/dukascopy/{pair}/{YYYY-MM}.parquet (docs/02 §3)."""
+import hashlib
 from pathlib import Path
 
 import pandas as pd
 
-from ta.config import DATA
+from ta.config import DATA, ROOT
 
+MANIFEST = ROOT / "data_manifest.csv"  # committed: the SHA-256 of every stored M1 month
 M1_COLUMNS = ["ts", "bid_o", "bid_h", "bid_l", "bid_c", "ask_o", "ask_h", "ask_l", "ask_c", "volume"]
 
 
@@ -41,3 +43,25 @@ def read_m1(pair: str, years=None, root: Path = DATA, raw: bool = False) -> pd.D
         return pd.DataFrame(columns=M1_COLUMNS)
     months = (pd.read_parquet(f) for f in files)
     return pd.concat(months if raw else (floor_spread(m) for m in months), ignore_index=True)
+
+
+def manifest(root: Path = DATA) -> pd.DataFrame:
+    """SHA-256 of every stored M1 month, as file (PAIR/YYYY-MM.parquet) -> sha256."""
+    base = root / "raw" / "dukascopy"
+    files = sorted(base.glob("*/*.parquet"))
+    return pd.DataFrame({"file": [f.relative_to(base).as_posix() for f in files],
+                         "sha256": [hashlib.sha256(f.read_bytes()).hexdigest() for f in files]})
+
+
+def verified_snapshot(root: Path = DATA, path: Path = MANIFEST) -> str:
+    """The data snapshot id (docs/02 §7). Refuses to run when a stored file no longer matches the committed
+    manifest: silent bit flips were found once (EURUSD 2014-11), and a flip inside a price need not fail to read."""
+    now = manifest(root)
+    if path.exists():
+        ref = pd.read_csv(path)
+        both = now.merge(ref, on="file", how="outer", suffixes=("", "_ref"), indicator=True)
+        bad = both[(both._merge != "both") | (both.sha256 != both.sha256_ref)].file.tolist()
+        if bad:
+            raise SystemExit(f"data does not match {path.name} ({len(bad)} files, e.g. {bad[:5]}): re-download them, "
+                             "or run `ta data-manifest` if the change is intended")
+    return hashlib.sha1("".join(now.file + now.sha256).encode()).hexdigest()[:8]

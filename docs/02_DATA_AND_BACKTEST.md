@@ -82,10 +82,14 @@ Broker-feed caveat: Dukascopy is an ECN feed, not Pepperstone's. Spreads and pri
 4. **Sizing test.** Risk per trade = 0.5% ± rounding for every pair (including JPY and USD-base pairs) at random equity levels.
 5. **Hand audit.** 20 random trades are traced on charts against the raw M1 data (`ta audit` → `reports/hand_audit.html`, re-traced by code that does not use the engine). M3 result: 20/20, and 571/571 research-period trades of the smoke run, including 25 Friday flattens. Injected errors (slip, commission, fill minute, stop level) are all caught.
 6. **Random-entry control.** The same stops/targets/costs with random entry times must show EV ≈ −costs. If the random strategy "makes money", the engine is wrong.
+7. **Broker-tester cross-check.** Orders from a saved run are replayed tick by tick in Dukascopy's own JForex historical tester (`ta jforex-check`, `jforex/OrderReplay.java`): same limit price (rounded to the 0.1-pip grid), stop, target, live windows and Friday flatten. M3 results:
+   - 40 random USDJPY orders: fill decision 39/39, fill minute equal or engine later (never earlier), exit reason 29/29. The engine's stop exits were better than the tester's on 6, worst +4.9 pips, all in fast spikes inside one minute.
+   - 100 random stop-outs, 7 pairs (`--stops`): tester slippage past the stop median 0.14 pip, mean 0.39, max 6.55; it grows with how far the minute overshoots the stop. This set `STOP_OVERSHOOT = 0.10` (stop fill = stop − 0.2 pip − 0.10 × overshoot), which leaves the engine worse than the tester on average (−0.28 pip) and better on 13/95 stops instead of 31/95.
+8. **Data integrity.** `data_manifest.csv` (committed) holds the SHA-256 of every stored M1 month; `ta backtest` and `ta grid` refuse to run if any file differs, and record the snapshot id in the registry's `data` column. Added after EURUSD 2014-11 was found with 12 single-bit flips (re-downloaded). Quality fixes made in M3: empty months are failures, not stored; gaps over 4 days are never a weekend; crossed or zero-spread M1 bars (USDJPY 2010–11, AUDUSD 2010) are floored to the month's median spread at read time.
 
 ## 7. Outputs per run
 
-- `runs/{run_id}/config.yaml`, the config's hash, and the data snapshot id (file hashes).
-- `trades.parquet` (one row per trade, all §12 fields from 01).
-- `report.html` with the equity curve in R, drawdown, the metric table, and per-pair/year/hour breakdowns.
+- `runs/{run_id}/config.json`, the config's hash, and the data snapshot id (registry `data` column).
+- `episodes.parquet` (one row per order: zone, fill, exit, R, MAE/MFE).
+- `report.html` (`ta report --run`) with the equity curve in R, drawdown, the metric table, and per-pair/year/London-hour breakdowns. Built and tested on synthetic trades in M3; first run on real results in M4.
 - A row in `runs/registry.csv` (every run, so the full test count is known for multiple-testing correction).

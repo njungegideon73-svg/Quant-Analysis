@@ -11,7 +11,7 @@ from ta.data import dukascopy as dk
 from ta.data.jforex import read_dump
 from ta.data.quality import check, classify_gaps
 from ta.data.resample import resample
-from ta.data.store import M1_COLUMNS, read_m1, write_m1
+from ta.data.store import M1_COLUMNS, manifest, read_m1, verified_snapshot, write_m1
 
 
 def bi5(rows):
@@ -154,3 +154,17 @@ def test_crossed_bars_get_the_month_median_spread(tmp_path):
     assert (raw.ask_c < raw.bid_c).sum() == 1
     assert np.allclose(m1.ask_c - m1.bid_c, 0.0001) and np.allclose(m1.ask_h - m1.ask_l, 4e-5)
     assert m1.drop(columns=[f"ask_{k}" for k in "ohlc"]).equals(raw.drop(columns=[f"ask_{k}" for k in "ohlc"]))
+
+
+def test_snapshot_refuses_a_flipped_bit(tmp_path):
+    write_m1(m1_frame("2024-01-03 10:00", 10), "EURUSD", 2024, 1, root=tmp_path)
+    ref = tmp_path / "manifest.csv"
+    manifest(tmp_path).to_csv(ref, index=False)
+    snap = verified_snapshot(tmp_path, ref)
+    assert len(snap) == 8 and verified_snapshot(tmp_path, ref) == snap
+    f = tmp_path / "raw" / "dukascopy" / "EURUSD" / "2024-01.parquet"
+    b = bytearray(f.read_bytes())
+    b[len(b) // 2] ^= 1
+    f.write_bytes(bytes(b))
+    with pytest.raises(SystemExit, match="EURUSD/2024-01.parquet"):
+        verified_snapshot(tmp_path, ref)
