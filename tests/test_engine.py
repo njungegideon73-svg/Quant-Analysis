@@ -258,3 +258,18 @@ def test_report_metrics_and_page(tmp_path):
     (tmp_path / "config.json").write_text("{}")
     page = build(tmp_path).read_text()
     assert "6 closed trades" in page and "<b>met</b>" in page and "USDJPY" in page  # 33% wins, +0.33R
+
+
+def test_m4_neighbours_and_selection_rule():
+    from ta.m4 import neighbours, picks, select
+    k = (3, 1.0, 0.10, 96, "proximal", "T1")
+    nb = neighbours(k)
+    assert len(nb) == 8 and (2, 1.0, 0.10, 96, "proximal", "T1") in nb and (3, 1.5, 0.10, 96, "proximal", "T1") in nb
+    assert len(neighbours((2, 1.0, 0.05, 48, "mid", "T2"))) == 5  # corner: one neighbour per param
+    s = pd.DataFrame({"trades": [400] * 8, "ev": [0.2, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.3], "pairs_pos": [7] * 8,
+                      "win_rate": 0.3, "pf": 1.3}, index=nb)
+    out = select(s, 300)
+    assert out.loc[[k], "eligible"].item() and out.loc[[k], "nbhd_score"].item() == pytest.approx(0.1)
+    s.loc[[nb[1]], "ev"] = -0.05  # one losing neighbour makes the centre ineligible
+    assert not select(s, 300).loc[[k], "eligible"].item()
+    assert picks(select(s, 300))["T2"] is None

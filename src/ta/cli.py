@@ -54,6 +54,9 @@ def main(argv=None) -> int:
     rp = sub.add_parser("report", help="runs/<id>/report.html: equity, drawdown, metrics (M4 on: shows performance)")
     rp.add_argument("--run", required=True)
 
+    mm = sub.add_parser("m4", help="M4: Stage A results, §4 candidate rule and walk-forward (shows performance)")
+    mm.add_argument("--note", default="stage A, 7 pairs, zone = candle + next wick, stop at origin swing")
+
     sub.add_parser("data-manifest", help="write data_manifest.csv: SHA-256 of every stored M1 month (runs verify it)")
 
     x = sub.add_parser("jforex-check", help="replay a run's orders in Dukascopy's JForex tester; compare fills/exits")
@@ -103,6 +106,9 @@ def main(argv=None) -> int:
 
         from ta.report import build
         print(build(Path(a.run)))
+    if a.cmd == "m4":
+        from ta.m4 import run as m4
+        print(m4(a.note))
     if a.cmd == "data-manifest":
         from ta.data.store import MANIFEST, manifest
         m = manifest()
