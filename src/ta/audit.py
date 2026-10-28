@@ -28,7 +28,7 @@ def _fillable(t: pd.Timestamp) -> bool:
     """Session 07-17 London, no rollover 16:45-17:30 NY, no Fri 15:00 - Sun 17:00 NY (holidays checked apart)."""
     ny, ldn = t.tz_convert(NY), t.tz_convert(LDN)
     m = ny.hour * 60 + ny.minute
-    weekend = (ny.dayofweek == 4 and m >= 900) or ny.dayofweek == 5 or (ny.dayofweek == 6 and m < 1020)
+    weekend = (ny.day_of_week == 4 and m >= 900) or ny.day_of_week == 5 or (ny.day_of_week == 6 and m < 1020)
     return 7 <= ldn.hour < 17 and not (1005 <= m < 1050) and not weekend
 
 
@@ -41,7 +41,7 @@ def retrace(t, m1: pd.DataFrame, cfg: dict) -> dict:
              if (r.ask_l <= t.entry - ft if d == 1 else r.bid_h >= t.entry + ft) and _fillable(r.ts.floor("15min")))
     fill = rows.ts[i]
     ny = fill.tz_convert(NY)
-    flat = ny.normalize() + pd.Timedelta(days=(4 - ny.dayofweek) % 7, hours=16, minutes=30)
+    flat = ny.normalize() + pd.Timedelta(days=(4 - ny.day_of_week) % 7, hours=16, minutes=30)
     if flat <= ny:
         flat += pd.Timedelta(days=7)
     out = {"fill_ts": fill}
@@ -60,7 +60,7 @@ def retrace(t, m1: pd.DataFrame, cfg: dict) -> dict:
             out |= {"exit_ts": r.ts, "reason": "target", "exit_px": t.target}
             break
     days = pd.date_range(fill.tz_convert(NY).normalize(), out["exit_ts"].tz_convert(NY).normalize(), freq="D")
-    nights = sum(1 for day in days if day.dayofweek < 5 and fill < day + pd.Timedelta(hours=17) <= out["exit_ts"])
+    nights = sum(1 for day in days if day.day_of_week < 5 and fill < day + pd.Timedelta(hours=17) <= out["exit_ts"])
     comm = lambda px: cfg["commission_per_lot"] / 1e5 * (1.0 if t.pair.endswith("USD") else px)
     net = (out["exit_px"] - t.entry) * d - comm(t.entry) - comm(out["exit_px"]) - nights * cfg["swap_pips"] * pip
     return out | {"nights": nights, "R": net / abs(t.entry - t.stop)}

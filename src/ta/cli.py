@@ -51,6 +51,11 @@ def main(argv=None) -> int:
     h.add_argument("--run", help="runs/<id> (default: the latest run)")
     h.add_argument("--n", type=int, default=20)
 
+    x = sub.add_parser("jforex-check", help="replay a run's orders in Dukascopy's JForex tester; compare fills/exits")
+    x.add_argument("--run", help="runs/<id> (default: the latest research run of the default config)")
+    x.add_argument("--n-fill", type=int, default=30)
+    x.add_argument("--n-nofill", type=int, default=10)
+
     a = p.parse_args(argv)
     if a.cmd == "download":
         from ta.data.dukascopy import download
@@ -96,6 +101,15 @@ def main(argv=None) -> int:
         from ta.audit import build
         from ta.config import ROOT
         print(build(Path(a.run) if a.run else max((ROOT / "runs").glob("2*")), a.n))
+    if a.cmd == "jforex-check":
+        from pathlib import Path
+
+        from ta.config import ROOT
+        from ta.crosscheck import run as crosscheck
+        from ta.registry import config_hash, rows
+        from ta.strategy import Config
+        ids = [r["run_id"] for r in rows() if r["period"] == "research" and r["config_hash"] == config_hash(Config().to_dict())]
+        print(crosscheck(Path(a.run) if a.run else ROOT / "runs" / ids[-1], a.n_fill, a.n_nofill))
     if a.cmd == "control":
         _control(a.pairs, a.n)
     return 0

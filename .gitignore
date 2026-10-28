@@ -4,10 +4,10 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .ruff_cache/
-data/
+/data/
 runs/*
 !runs/registry.csv
-live/
+/live/
 reports/*
 !reports/run_download.sh
 research/subs/

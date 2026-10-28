@@ -222,3 +222,22 @@ def test_research_load_holds_nothing_after_2019():
     m15, h4, m1 = load("EURUSD", "research")
     assert m15.close_ts.max() <= end and h4.close_ts.max() <= end and m1.ts.max() < end.value
     assert m1.ts.min() < pd.Timestamp("2010-02-01", tz="UTC").value  # warm-up starts with the data
+
+
+def test_crosscheck_live_windows_and_cache_holes(tmp_path, monkeypatch):
+    import ta.crosscheck as cc
+    ms = lambda s: pd.Timestamp(s, tz="UTC").value // 10**6
+    e = pd.DataFrame({"pair": ["EURUSD"], "dir": [1], "entry": [1.1], "stop": [1.098], "target": [1.106],
+                      "place_ts": [pd.Timestamp("2024-01-09 06:00", tz="UTC").value],
+                      "end_ts": [pd.Timestamp("2024-01-09 18:00", tz="UTC").value], "exit_ts": [-1]})
+    od = cc.orders(e, "london_ny")
+    assert od.windows[0] == f"{ms('2024-01-09 07:00')}-{ms('2024-01-09 17:00')}"  # London session only
+    hour = tmp_path / "EURUSD" / "2024" / "00" / "09"
+    hour.mkdir(parents=True)
+    (hour / "10h_ticks.bi5").write_bytes(b"")  # a failed download cached as empty
+    (hour / "11h_ticks.bi5").write_bytes(b"x")
+    (hour / "05h_ticks.bi5").write_bytes(b"")  # empty, but we have no prices then either: genuine
+    monkeypatch.setattr(cc, "CACHE", tmp_path)
+    monkeypatch.setattr(cc, "read_m1", lambda pair, years: pd.DataFrame(
+        {"ts": pd.to_datetime(["2024-01-09 10:05", "2024-01-09 11:05"], utc=True)}))
+    assert [f.name for f in cc.holes(od)[0]] == ["10h_ticks.bi5"]

@@ -110,17 +110,18 @@ def test_resample_h4_boundaries_follow_new_york_17h(start):
 
 
 def test_quality_flags_problems_and_classifies_gaps():
-    a = m1_frame("2024-01-03 10:00", 60)           # Wednesday
-    b = m1_frame("2024-01-03 12:00", 60)           # 1h midweek gap -> unexplained
+    a = m1_frame("2024-01-05 10:00", 60)           # Friday
+    b = m1_frame("2024-01-05 12:00", 60)           # 1h intraday gap -> unexplained
     c = m1_frame("2024-01-07 23:00", 60)           # after the weekend
-    df = pd.concat([a, b, c], ignore_index=True)
+    d = m1_frame("2024-02-12 08:00", 60)           # a missing month spans weekends but is not one
+    df = pd.concat([a, b, c, d], ignore_index=True)
     df.loc[5, "ask_c"] = df.loc[5, "bid_c"] - 0.001  # crossed quote
     df = pd.concat([df, df.iloc[[10]]], ignore_index=True).sort_values("ts", ignore_index=True)  # duplicate
     r = check(df, "EURUSD")
     assert r["crossed"] == 1 and r["dup_ts"] == 1
-    assert r["gaps_unexplained"] == 1
+    assert r["gaps_unexplained"] == 2
     kinds = classify_gaps(df.ts).kind.tolist()
-    assert kinds == ["unexplained", "weekend"]
+    assert kinds == ["unexplained", "weekend", "unexplained"]
 
 
 def test_load_env(tmp_path, monkeypatch):
@@ -143,3 +144,13 @@ def test_jforex_dump_matches_store_schema(tmp_path):
     df = read_dump(f)
     assert list(df.columns) == M1_COLUMNS and df.ts[0] == pd.Timestamp("2024-04-15", tz="UTC")
     assert df.dtypes.equals(m1_frame("2024-04-15", 1).dtypes)
+
+
+def test_crossed_bars_get_the_month_median_spread(tmp_path):
+    df = m1_frame("2024-01-03 10:00", 10)
+    df.loc[3, [f"ask_{k}" for k in "ohlc"]] = df.loc[3, [f"bid_{k}" for k in "ohlc"]].to_numpy() - 1e-5  # crossed
+    write_m1(df, "EURUSD", 2024, 1, root=tmp_path)
+    raw, m1 = read_m1("EURUSD", root=tmp_path, raw=True), read_m1("EURUSD", root=tmp_path)
+    assert (raw.ask_c < raw.bid_c).sum() == 1
+    assert np.allclose(m1.ask_c - m1.bid_c, 0.0001) and np.allclose(m1.ask_h - m1.ask_l, 4e-5)
+    assert m1.drop(columns=[f"ask_{k}" for k in "ohlc"]).equals(raw.drop(columns=[f"ask_{k}" for k in "ohlc"]))
