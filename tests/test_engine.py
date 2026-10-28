@@ -32,7 +32,7 @@ def test_limit_needs_trade_through():
 
 def test_stop_fills_with_slip_and_gaps_at_the_open():
     j, why, px = exit_trade(m1([FLAT, FLAT, (1.0990, 1.0990, 1.0984)]), 0, 1, ENTRY, STOP, TARGET, C)
-    assert (j, why, px) == (2, "stop", pytest.approx(STOP - 0.00002))
+    assert (j, why, px) == (2, "stop", pytest.approx(STOP - 0.00002 - 0.1 * 0.0001))  # slip + 10% of 1-pip overshoot
     _, _, px = exit_trade(m1([FLAT, (1.0975, 1.0978, 1.0970)]), 0, 1, ENTRY, STOP, TARGET, C)
     assert px == pytest.approx(1.0975)  # gapped through: the open is worse than stop - slip
 
@@ -48,13 +48,15 @@ def test_stop_and_target_in_the_same_minute_is_a_stop():
 
 def test_fill_minute_target_does_not_count_but_fill_minute_stop_does():
     assert exit_trade(m1([(1.1000, 1.1060, 1.0999)]), 0, 1, ENTRY, STOP, TARGET, C) is None
-    assert exit_trade(m1([(1.1000, 1.1005, 1.0980)]), 0, 1, ENTRY, STOP, TARGET, C) == (0, "stop", pytest.approx(STOP - 0.00002))
+    assert exit_trade(m1([(1.1000, 1.1005, 1.0980)]), 0, 1, ENTRY, STOP, TARGET, C) == (0, "stop", pytest.approx(STOP - 0.00007))
 
 
 def test_short_mirrors_on_the_ask():
     # short at 1.1000, stop 1.1015: ask_h = bid_h + 1 pip reaches the stop before the bid does
-    x = exit_trade(m1([FLAT, (1.1010, 1.1014, 1.1008)]), 0, -1, 1.1000, 1.1015, 1.0955, C)
-    assert x[1:] == ("stop", pytest.approx(1.1015 + 0.00002))
+    x = exit_trade(m1([(1.1000, 1.1005, 1.0995), (1.1010, 1.1014, 1.1008)]), 0, -1, 1.1000, 1.1015, 1.0955, C)
+    assert x[1:] == ("stop", pytest.approx(1.1015 + 0.00002))  # ask_h exactly at the stop: no overshoot
+    y = exit_trade(m1([(1.1000, 1.1005, 1.0995), (1.1010, 1.1054, 1.1008)]), 0, -1, 1.1000, 1.1015, 1.0955, C)  # spike 40 pips through
+    assert y[1:] == ("stop", pytest.approx(1.1015 + 0.00002 + 0.1 * 0.0040))
 
 
 def test_weekend_flatten_at_friday_1630_ny():

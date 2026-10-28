@@ -12,6 +12,11 @@ from ta.data.store import read_m1
 
 NY = "America/New_York"
 CHUNK = 4096
+# Extra stop slippage per unit of the minute's overshoot past the stop. Calibrated on 95 mid-minute stop-outs replayed
+# tick by tick in Dukascopy's tester (reports/jforex_stops_analysis.csv): 0.05 is unbiased on average, 0.10 keeps the
+# engine worse than the tester on average (-0.28 pip) and better on 13/95 stops instead of 31/95. Cost model, not a
+# strategy parameter, so it is not in Config and does not count as a trial.
+STOP_OVERSHOOT = 0.10
 
 
 @dataclass
@@ -91,10 +96,13 @@ def exit_trade(m1: M1, i: int, d: int, entry: float, stop: float, target: float,
         if fl[j - s]:
             return j, "flat", (m1.bo[j] - c.slip) if d == 1 else (m1.ao[j] + c.slip)
         if sl[j - s]:
+            # a gap through the stop fills at the open; hit inside the minute, it also pays part of the overshoot
             if d == 1:
-                px = stop - c.slip if j == i else min(stop - c.slip, m1.bo[j])  # a gap through the stop fills at the open
+                gap = j > i and m1.bo[j] <= stop
+                px = min(stop - c.slip, m1.bo[j]) if gap else stop - c.slip - STOP_OVERSHOOT * (stop - m1.bl[j])
             else:
-                px = stop + c.slip if j == i else max(stop + c.slip, m1.ao[j])
+                gap = j > i and m1.ao[j] >= stop
+                px = max(stop + c.slip, m1.ao[j]) if gap else stop + c.slip + STOP_OVERSHOOT * (m1.ah[j] - stop)
             return j, "stop", px
         return j, "target", target
     return None

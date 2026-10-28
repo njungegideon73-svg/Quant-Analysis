@@ -121,17 +121,21 @@ def compare(eps: pd.DataFrame, tester: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def run(run_dir: Path, n_fill: int = 30, n_nofill: int = 10, seed: int = 20261030) -> str:
+def run(run_dir: Path, n_fill: int = 30, n_nofill: int = 10, seed: int = 20261030, stops: bool = False) -> str:
+    """stops=True samples stop-outs only (calibrates stop slippage) and writes reports/jforex_stops.csv."""
     cfg = json.loads((run_dir / "config.json").read_text())
     eps = pd.read_parquet(run_dir / "episodes.parquet")
     od = orders(eps, cfg["session"])
     eps = eps[(od.windows != "").to_numpy()]  # never live inside the session: nothing to compare
     filled, unfilled = eps[(eps.fill_ts >= 0) & (eps.exit_ts >= 0)], eps[eps.fill_ts < 0]
+    if stops:
+        filled, n_nofill = filled[filled.reason == "stop"], 0
     pick = pd.concat([filled.sample(min(n_fill, len(filled)), random_state=seed),
                       unfilled.sample(min(n_nofill, len(unfilled)), random_state=seed)]).sort_values("place_ts")
     cmp = compare(pick, replay_complete(od.loc[pick.index], DATA / "tmp" / "jforex" / "crosscheck"))
     REPORTS.mkdir(exist_ok=True)
-    cmp.to_csv(REPORTS / "jforex_crosscheck.csv", index=False)
+    out = REPORTS / ("jforex_stops.csv" if stops else "jforex_crosscheck.csv")
+    cmp.to_csv(out, index=False)
     gaps = int((cmp.tester_reason == "data_gap").sum())
     cmp = cmp[cmp.tester_reason != "data_gap"]  # the tester's tick feed had a hole: no comparison possible
     both = cmp[cmp.engine_fill & cmp.tester_fill]
@@ -146,4 +150,4 @@ def run(run_dir: Path, n_fill: int = 30, n_nofill: int = 10, seed: int = 2026103
         f"same exit minute {(closed.exit_min_diff == 0).sum()}"),
         (f"exit price engine - tester (pips, + = engine better): median {closed.exit_px_diff_pips.median():+.2f}, "
         f"max {closed.exit_px_diff_pips.max():+.2f}; engine better on {(closed.exit_px_diff_pips > 0.05).sum()} (expect 0)"),
-        f"-> {REPORTS / 'jforex_crosscheck.csv'}"])
+        f"-> {out}"])

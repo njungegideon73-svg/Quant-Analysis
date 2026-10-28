@@ -55,6 +55,7 @@ def main(argv=None) -> int:
     x.add_argument("--run", help="runs/<id> (default: the latest research run of the default config)")
     x.add_argument("--n-fill", type=int, default=30)
     x.add_argument("--n-nofill", type=int, default=10)
+    x.add_argument("--stops", action="store_true", help="sample stop-outs only (stop slippage calibration)")
 
     a = p.parse_args(argv)
     if a.cmd == "download":
@@ -109,7 +110,7 @@ def main(argv=None) -> int:
         from ta.registry import config_hash, rows
         from ta.strategy import Config
         ids = [r["run_id"] for r in rows() if r["period"] == "research" and r["config_hash"] == config_hash(Config().to_dict())]
-        print(crosscheck(Path(a.run) if a.run else ROOT / "runs" / ids[-1], a.n_fill, a.n_nofill))
+        print(crosscheck(Path(a.run) if a.run else ROOT / "runs" / ids[-1], a.n_fill, a.n_nofill, stops=a.stops))
     if a.cmd == "control":
         _control(a.pairs, a.n)
     return 0

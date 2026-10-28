@@ -168,6 +168,6 @@ def random_control(f: dict, m1: M1, cfg: Config, n: int = 3000, seed: int = 0, s
         j, reason, px = x
         res = trade_r(m1, i, j, d, entry, stop, px, c)
         spread = m1.ao[i] - m1.bo[i]
-        cost = spread + 2 * c.commission(entry) + (c.slip if reason in ("stop", "flat") else 0) + res["nights"] * c.swap
+        cost = spread + 2 * c.commission(entry) + ((stop - px) * d if reason == "stop" else c.slip if reason == "flat" else 0) + res["nights"] * c.swap
         rows.append({"bar": s, "dir": d, "reason": reason, "cost_R": cost / dist} | res)
     return pd.DataFrame(rows)

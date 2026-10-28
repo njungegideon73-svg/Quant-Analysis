@@ -33,6 +33,19 @@ public class OrderReplay {
     };
 
     public static void main(String[] args) throws Exception {
+        try {
+            run(args);
+        } finally {
+            System.exit(0);  // an SDK thread is non-daemon: without this a failed run leaves the JVM (and our caller) hanging
+        }
+    }
+
+    static void connect(ITesterClient tester, String jnlp) throws Exception {
+        tester.connect(jnlp, System.getenv("DUKASCOPY_USER"), System.getenv("DUKASCOPY_PASSWORD"));
+        for (int i = 0; i < 60 && !tester.isConnected(); i++) Thread.sleep(1000);
+    }
+
+    static void run(String[] args) throws Exception {
         List<String> lines = Files.readAllLines(Paths.get(args[0]));
         ITesterClient tester = TesterFactory.getDefaultInstance();
         tester.setSystemListener(new ISystemListener() {
@@ -42,30 +55,38 @@ public class OrderReplay {
             public void onDisconnect() {}
         });
         String jnlp = System.getenv().getOrDefault("DUKASCOPY_JNLP", "https://platform.dukascopy.com/demo/jforex.jnlp");
-        tester.connect(jnlp, System.getenv("DUKASCOPY_USER"), System.getenv("DUKASCOPY_PASSWORD"));
-        for (int i = 0; i < 60 && !tester.isConnected(); i++) Thread.sleep(1000);
+        connect(tester, jnlp);
         if (!tester.isConnected()) {
-            System.err.println("ERROR could not connect to JForex demo (check login in .env)");
-            System.exit(2);
+            System.out.println("ERROR could not connect to JForex demo (check login in .env)");
+            return;
         }
         tester.setInitialDeposit(JFCurrency.getInstance("USD"), 50_000);
         try (PrintWriter w = new PrintWriter(Files.newBufferedWriter(Paths.get(args[1])))) {
             w.println("id,fill_ms,fill_px,exit_ms,exit_px,reason");
             for (String line : lines.subList(1, lines.size())) {
                 Replay r = new Replay(line.split(",", -1));
-                tester.setSubscribedInstruments(Set.of(r.ins));
-                tester.setDataInterval(ITesterClient.DataLoadingMethod.ALL_TICKS, r.from, r.to);
-                allLoaded = false;
-                for (int k = 0; k < 6 && !allLoaded; k++) {  // the public feed answers 503 under load
-                    if (k > 0) Thread.sleep(30_000L * k);
-                    tester.downloadData(PROGRESS).get();
-                }
-                if (allLoaded) {
-                    done = new CountDownLatch(1);
-                    tester.startStrategy(r, PROGRESS);
-                    done.await();
-                } else {
-                    r.reason = "data_gap";
+                try {
+                    if (!tester.isConnected()) connect(tester, jnlp);  // Dukascopy drops long sessions
+                    tester.setSubscribedInstruments(Set.of(r.ins));
+                    tester.setDataInterval(ITesterClient.DataLoadingMethod.ALL_TICKS, r.from, r.to);
+                    allLoaded = false;
+                    for (int k = 0; k < 6 && !allLoaded; k++) {  // the public feed answers 503 under load
+                        if (k > 0) Thread.sleep(30_000L * k);
+                        tester.downloadData(PROGRESS).get();
+                    }
+                    if (allLoaded) {
+                        done = new CountDownLatch(1);
+                        long pid = tester.startStrategy(r, PROGRESS);
+                        if (!done.await(10, java.util.concurrent.TimeUnit.MINUTES)) {  // a dropped feed stalls the tester
+                            r.reason = "error:timeout";
+                            tester.stopStrategy(pid);
+                            done.await(1, java.util.concurrent.TimeUnit.MINUTES);
+                        }
+                    } else {
+                        r.reason = "data_gap";
+                    }
+                } catch (Exception e) {
+                    r.reason = "error:" + e.getClass().getSimpleName();
                 }
                 w.println(r.id + "," + r.fillMs + "," + r.fillPx + "," + r.exitMs + "," + r.exitPx + "," + r.reason);
                 w.flush();

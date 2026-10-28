@@ -51,9 +51,11 @@ def retrace(t, m1: pd.DataFrame, cfg: dict) -> dict:
             out |= {"exit_ts": r.ts, "reason": "flat", "exit_px": r.bid_o - slip if d == 1 else r.ask_o + slip}
             break
         if r.bid_l <= t.stop if d == 1 else r.ask_h >= t.stop:
-            px = t.stop - slip if d == 1 else t.stop + slip
-            if k > i:  # a gap through the stop fills at the open
-                px = min(px, r.bid_o) if d == 1 else max(px, r.ask_o)
+            gapped = k > i and (r.bid_o <= t.stop if d == 1 else r.ask_o >= t.stop)
+            if gapped:  # a gap through the stop fills at the open
+                px = min(t.stop - slip, r.bid_o) if d == 1 else max(t.stop + slip, r.ask_o)
+            else:  # hit inside the minute: slip plus STOP_OVERSHOOT of the overshoot past the stop
+                px = t.stop - slip - 0.10 * (t.stop - r.bid_l) if d == 1 else t.stop + slip + 0.10 * (r.ask_h - t.stop)
             out |= {"exit_ts": r.ts, "reason": "stop", "exit_px": px}
             break
         if k > i and (r.bid_h >= t.target + ft if d == 1 else r.ask_l <= t.target - ft):
