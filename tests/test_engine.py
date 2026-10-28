@@ -89,7 +89,7 @@ def features(n=30):
     h, l, c = np.full(n, 1.1040), np.full(n, 1.1025), np.full(n, 1.1030)
     h[3:6] = 1.1050
     z = pd.DataFrame({"t": [5], "t_bos": [5], "dir": [1], "kind": ["cont"], "origin": [2], "low": [1.1000],
-                      "high": [1.1020], "leg": [0]})
+                      "high": [1.1020], "swing": [1.1000], "leg": [0]})
     return {"pair": "EURUSD", "ts": ts, "h": h, "l": l, "c": c, "ask_l": l + 0.0001, "bid_h": h, "atr": np.full(n, 0.001),
             "zones": z, "h4state": np.ones(n, int), "h4atr": np.full(n, 0.01), "h4eq": np.full(n, np.nan),
             "fillable": np.ones(n, bool), "blackout": np.zeros(n, bool)}
@@ -120,7 +120,7 @@ def test_episode_cancelled_when_a_close_breaks_the_zone():
 
 def test_min_stop_skip_and_widen():
     f = features()
-    f["zones"].loc[0, "low"] = 1.1012  # 8-pip zone -> stop under 15 pips
+    f["zones"].loc[0, ["low", "swing"]] = 1.1012  # 8-pip zone -> stop under 15 pips
     assert episodes(f, Config(min_stop_mode="skip")).empty
     assert episodes(f, Config(min_stop_mode="widen")).dist[0] == pytest.approx(0.0015)
 

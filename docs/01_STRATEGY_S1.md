@@ -52,7 +52,8 @@ At each bullish BOS at bar `t_b`, with `o = leg_origin`:
 
 1. **Impulse start.** `j` = the first bar in `(o, t_b]` that is bullish with `body ≥ m·ATR_M15` *(param m ∈ {1.0, 1.5})*. If none exists, there is no zone.
 2. **Zone candle** `z`: start at `j − 1` and step back while `z > o` and candle `z` is itself bullish with `body ≥ 0.5·ATR_M15` (fixed). JeaFx's *"last candle before the impulse"* is the *"small candle before a large rally away"*, often an indecision candle, so a candle that is already part of the rally is not the zone. `z ≥ o` always.
-3. **Zone** = `[zone_low, zone_high]` with `zone_low = min(low[o .. j−1])` and `zone_high = high[z]`. This is wick-to-wick, extended over the origin wick.
+3. **Zone** = `[zone_low, zone_high]` with `zone_low = min(low[z], low[z+1])` and `zone_high = high[z]`: the zone candle wick to wick, covering the next candle's wick too (JeaFx: *"drawn wick to wick, covering the entire candle"*, *"cover the … wick of the next candle as well"*).
+   - **Origin swing** `swing = min(low[o .. j−1], zone_low)`, the leg's low. It is kept apart from the zone: the stop and the discount EQ use it, as JeaFx puts his usual ("conservative") stop beyond the swing, not at the zone.
    - Variant *(param zone_body)*: `zone_high = max(open, close)[z]`.
 4. **Imbalance required.** At least one bullish 3-candle FVG in `[j−1, t_b+1]`, i.e. `low[k+1] > high[k−1]` for some k. If there is none, there is no zone.
    - **Open range (no retest).** Every bar after the impulse up to creation must stay clear of the zone: `min(low[j+1 .. created]) − zone_high ≥ 0.3·ATR_M15` (fixed; set by review rounds 1–2, see 05). This is JeaFx's own test of imbalance: *"the open price range is left open and the demand zone hasn't been retested"*. A zone that was wicked back into before price left has no imbalance.
@@ -66,8 +67,8 @@ A zone is **valid** while all of these hold:
 | Rule | Definition |
 |---|---|
 | Fresh | No M15 bar after `t_b` has had `low ≤ zone_high` before our order exists. The first touch is the trade; zones already touched are discarded. |
-| Alive | No M15 close `< zone_low` |
-| Discount | `entry_price ≤ EQ`, where `EQ = (leg_high + zone_low)/2` and `leg_high = max(high[o .. now])`. `leg_high` only rises, so this condition only becomes easier. |
+| Alive | No M15 close `< zone_low` (the zone, not the swing) |
+| Discount | `entry_price ≤ EQ`, where `EQ = (leg_high + swing)/2` and `leg_high = max(high[o .. now])`. `leg_high` only rises, so this condition only becomes easier. |
 | Bias | The H4 state is `BULL` (§7) |
 | Not expired | `now − t_b ≤ K` M15 bars *(param K ∈ {48, 96, 192})* |
 
@@ -78,7 +79,7 @@ A zone is **valid** while all of these hold:
 | Item | Rule |
 |---|---|
 | Entry | Buy **limit** at `entry = zone_high` *(param entry_at ∈ {proximal, mid})*, where `mid = (zone_high+zone_low)/2` |
-| Stop | `stop = zone_low − b·ATR_M15` *(param b ∈ {0.05, 0.10, 0.20})*. Executed on **bid**. |
+| Stop | `stop = swing − b·ATR_M15` *(param b ∈ {0.05, 0.10, 0.20})*. Executed on **bid**. |
 | Stop distance floor | `entry − stop ≥ 15 pips` (JPY: 0.15). If smaller, `min_stop_mode` *(param)* decides: `skip` the trade, or `widen` the stop to 15 pips. |
 | Stop distance cap | `entry − stop ≤ 3·ATR_H4`, otherwise skip (prevents giant-risk trades) |
 | Target T1 (fixed) | `entry + 3·(entry − stop)` |
@@ -109,7 +110,7 @@ There is **no trade management** in the baseline: set-and-forget, target or stop
 ## 9. Liquidity veto (A/B filter)
 
 - **Equal lows** = two confirmed M15 swing lows within `t·ATR` of each other *(t ∈ {0.1})* that no later bar has traded below.
-- **Veto:** skip a long if unswept equal lows lie in `(zone_low − 2·ATR_M15, zone_low)`. JeaFx: *never buy above equal lows*, because the zone is likely bait and price will run the lows first.
+- **Veto:** skip a long if unswept equal lows lie in `(swing − 2·ATR_M15, swing)`. JeaFx: *never buy above equal lows*, because the zone is likely bait and price will run the lows first.
 - Tested as `liq_veto ∈ {off, on}`.
 
 ## 10. Portfolio rules

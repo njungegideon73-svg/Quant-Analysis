@@ -80,8 +80,8 @@ def check(t, m1: pd.DataFrame, cfg: dict) -> tuple[dict, list[tuple[str, bool, s
     broken = (((closes.bid_c + closes.ask_c) / 2 - far) * d < 0).any()
     cs = [
         ("entry at the near edge", np.isclose(t.entry, near), f"{t.entry:.5f}, zone {t.zone_low:.5f}-{t.zone_high:.5f}"),
-        ("stop beyond the far edge, >= 15 pips", (far - t.stop) * d > 0 and t.dist >= 15 * pip - 1e-12,
-         f"stop {t.stop:.5f}, {t.dist / pip:.1f} pips"),
+        ("stop beyond the origin swing, >= 15 pips", (t.swing - t.stop) * d > 0 and (t.swing - far) * d <= 0
+         and t.dist >= 15 * pip - 1e-12, f"stop {t.stop:.5f} past swing {t.swing:.5f}, {t.dist / pip:.1f} pips"),
         ("target = entry + 3R", np.isclose(t.target, t.entry + d * 3 * t.dist), f"{t.target:.5f}"),
         ("zone not touched before the order", not touched, f"{len(pre)} min from creation to placement"),
         ("no close beyond the far edge while pending", not broken, f"{len(closes)} M15 closes pending"),

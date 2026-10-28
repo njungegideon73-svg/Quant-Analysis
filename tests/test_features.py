@@ -54,7 +54,7 @@ def test_zones_need_impulse_and_fvg():
     ev, _ = structure(H, L, C, pivots(H, L, 1))
     z = zones(O, H, L, C, ev, ATR, m=1.0)
     assert z[["t", "t_bos", "origin", "impulse", "zone_bar", "fvg_bar"]].values.tolist() == [[6, 6, 4, 5, 4, 5]]
-    assert (z.low[0], z.high[0]) == (0.8, 1.2)  # wick to wick, origin low included
+    assert (z.low[0], z.high[0], z.swing[0]) == (0.8, 1.2, 0.8)  # zone candle is the origin here
     assert zones(O, H, L, C, ev, ATR, m=1.0, zone_body=True).high[0] == max(O[4], C[4])
     assert zones(O, H, L, C, ev, ATR, m=5.0).empty  # no candle big enough
 
@@ -133,4 +133,13 @@ def test_zone_candle_skips_rally_candles():
                        (1.0, 1.55, 0.99, 1.5), (1.5, 1.7, 1.1, 1.6)])
     ev = pd.DataFrame({"t": [4], "dir": [1], "kind": ["cont"], "origin": [1]})
     z = zones(o, h, l, c, ev, np.full(5, 0.1), m=1.0)
-    assert z[["zone_bar", "impulse", "low", "high"]].values.tolist() == [[1, 3, 0.8, 0.97]]
+    assert z[["zone_bar", "impulse", "low", "high", "swing"]].values.tolist() == [[1, 3, 0.8, 0.97, 0.8]]
+
+
+def test_zone_is_one_candle_plus_next_wick_and_swing_reaches_the_origin():
+    # origin @0 (low 0.70) sits 3 candles before the zone candle @3; the next candle @4 (the impulse) wicks to 0.86
+    o, h, l, c = bars([(0.95, 1.0, 0.7, 0.9), (0.9, 0.97, 0.85, 0.92), (0.92, 0.96, 0.9, 0.93),
+                       (0.93, 0.95, 0.88, 0.94), (0.94, 1.5, 0.86, 1.45), (1.45, 1.7, 1.1, 1.6)])
+    ev = pd.DataFrame({"t": [5], "dir": [1], "kind": ["cont"], "origin": [0]})
+    z = zones(o, h, l, c, ev, np.full(6, 0.1), m=1.0)
+    assert z[["zone_bar", "impulse", "low", "high", "swing"]].values.tolist() == [[3, 4, 0.86, 0.95, 0.7]]

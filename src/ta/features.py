@@ -107,16 +107,20 @@ def zones(o, h, l, c, events: pd.DataFrame, atr_, m, zone_body=False) -> pd.Data
             continue
         k = ks[fvg.argmax()]
         created = max(tb, k + 1)
+        # zone = the zone candle wick to wick, covering the next candle's wick too (JeaFx); the stop goes beyond the
+        # leg's origin swing, his "conservative stop", so `swing` is kept apart (docs/05 open issue #28/#29)
         if d == 1:
-            lo, hi = l[org:j].min(), max(o[z], c[z]) if zone_body else h[z]
+            lo, hi = min(l[z], l[z + 1]), max(o[z], c[z]) if zone_body else h[z]
+            swing = min(l[org:j].min(), lo)
         else:
-            lo, hi = min(o[z], c[z]) if zone_body else l[z], h[org:j].max()
+            lo, hi = min(o[z], c[z]) if zone_body else l[z], max(h[z], h[z + 1])
+            swing = max(h[org:j].max(), hi)
         after = slice(j + 1, created + 1)  # JeaFx's imbalance: price left the zone and has not come back
         gap = l[after].min() - hi if d == 1 else lo - h[after].max()
         if not gap >= OPEN_MIN * atr_[created]:
             continue
-        rows.append((created, tb, d, e.kind, org, j, z, lo, hi, k, gap))
-    cols = ["t", "t_bos", "dir", "kind", "origin", "impulse", "zone_bar", "low", "high", "fvg_bar", "open_range"]
+        rows.append((created, tb, d, e.kind, org, j, z, lo, hi, swing, k, gap))
+    cols = ["t", "t_bos", "dir", "kind", "origin", "impulse", "zone_bar", "low", "high", "swing", "fvg_bar", "open_range"]
     return pd.DataFrame(rows, columns=cols)
 
 

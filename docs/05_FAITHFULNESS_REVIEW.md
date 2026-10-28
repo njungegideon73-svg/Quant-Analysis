@@ -59,7 +59,7 @@ Most of the disagreements are setups you passed that had been **retested** after
 
 ### Open issues
 
-- **Origin-wick extension** (`zone_low = min(low[o..j−1])`) can stretch a zone over many candles (#28, #29). Options: cap the zone at N candles, or keep the zone to the zone candle and put the stop beyond the origin, which is his "conservative stop". This needs a decision before M4. The M3 stop cap (3·ATR_H4) already skips the worst cases.
+- ~~**Origin-wick extension**~~ **Resolved 2026-10-29** (docs/03 change log): the zone is the zone candle plus the next candle's wick; the stop goes beyond the origin swing. Original note: (`zone_low = min(low[o..j−1])`) can stretch a zone over many candles (#28, #29). Options: cap the zone at N candles, or keep the zone to the zone candle and put the stop beyond the origin, which is his "conservative stop". This needs a decision before M4. The M3 stop cap (3·ATR_H4) already skips the worst cases.
 - **News wicks** (#28) are real prices. A news filter waits for a point-in-time calendar (02 §2).
 - Round 2 (a fresh sample under the new rules) confirms the fixes.
 

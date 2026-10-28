@@ -121,7 +121,7 @@ def episodes(f: dict, cfg: Config) -> pd.DataFrame:
         d, A = z.dir, f["atr"][z.t]
         near, far = (z.high, z.low) if d == 1 else (z.low, z.high)
         entry = near if cfg.entry_at == "proximal" else (z.high + z.low) / 2
-        stop = far - d * cfg.b * A
+        stop = z.swing - d * cfg.b * A  # beyond the origin swing; the zone itself ends at `far`
         dist = (entry - stop) * d
         if dist < cfg.min_stop_pips * pip:
             if cfg.min_stop_mode == "skip":
@@ -133,14 +133,14 @@ def episodes(f: dict, cfg: Config) -> pd.DataFrame:
         s = np.arange(z.t, min(z.t_bos + cfg.K + 1, n - 1) + 1)  # decision closes; expiry fails at t_b+K+1
         ext = f["h"] if d == 1 else -f["l"]
         leg = np.maximum.accumulate(ext[z.origin:s[-1] + 1])[s - z.origin] * d  # leg_high (long) / leg_low (short)
-        cond = (entry - (leg + far) / 2) * d <= 0  # discount (long) / premium (short)
+        cond = (entry - (leg + z.swing) / 2) * d <= 0  # discount (long) / premium (short) over the whole leg
         cond &= f["h4state"][s] == d
         if cfg.target == "T2":
             cond &= (leg - entry) * d >= cfg.rr * dist
         if cfg.htf_location:
             cond &= (entry - f["h4eq"][s]) * d <= 0
         if cfg.liq_veto:
-            cond &= ~_veto(f["eql"], s, d, far, cfg.liq_atr * A)
+            cond &= ~_veto(f["eql"], s, d, z.swing, cfg.liq_atr * A)
         dead = ((f["c"][s] - far) * d < 0) | (s - z.t_bos > cfg.K)
         touch = (f["l"][s] <= near) if d == 1 else (f["h"][s] >= near)
         touch[0] = False  # bars up to creation are clear by the open-range rule
@@ -158,8 +158,8 @@ def episodes(f: dict, cfg: Config) -> pd.DataFrame:
             target = entry + d * cfg.rr * dist
         else:
             target = leg[fb - z.t - 1] if fb >= 0 else np.nan  # leg extreme at the close before the fill
-        rows.append((z.t, z.t_bos, d, z.leg, z.low, z.high, int(s[i]), int(s[e]), fb, entry, stop, target, dist))
-    return pd.DataFrame(rows, columns=["zone_t", "t_bos", "dir", "leg", "zone_low", "zone_high", "place_bar",
+        rows.append((z.t, z.t_bos, d, z.leg, z.low, z.high, z.swing, int(s[i]), int(s[e]), fb, entry, stop, target, dist))
+    return pd.DataFrame(rows, columns=["zone_t", "t_bos", "dir", "leg", "zone_low", "zone_high", "swing", "place_bar",
                                        "end_bar", "fill_bar", "entry", "stop", "target", "dist"])
 
 
