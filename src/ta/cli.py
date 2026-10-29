@@ -30,6 +30,8 @@ def main(argv=None) -> int:
     v.add_argument("--seed", type=int, default=20261027)
     v.add_argument("--out", default="reports/faithfulness_review.html")
 
+    sub.add_parser("review-s4", help="chart 30 random S4 setups, blind to the outcome -> reports/s4_review.html")
+
     b = sub.add_parser("backtest", help="run S1 (default config) -> runs/<id>/episodes.parquet; prints counts only")
     b.add_argument("--pairs", nargs="+", default=PAIRS)
     b.add_argument("--note", default="", help="why this run was made (stored in runs/registry.csv)")
@@ -40,6 +42,8 @@ def main(argv=None) -> int:
     g.add_argument("--pairs", nargs="+", default=PAIRS)
     g.add_argument("--workers", type=int, default=4)
     g.add_argument("--note", default="Stage A grid")
+    g.add_argument("--stage", choices=["A", "B", "S2", "S3", "S4", "S5"], default="A",
+                   help="A: 216-config grid, B: 7 filter flips from the pick, S2: the 4-config S2 grid (docs/06 §11), S3: 8 configs (docs/09), S4: 12 (docs/11)")
 
     sub.add_parser("runs", help="list registered runs and the trial count (distinct configs)")
 
@@ -56,6 +60,7 @@ def main(argv=None) -> int:
 
     mm = sub.add_parser("m4", help="M4: Stage A results, §4 candidate rule and walk-forward (shows performance)")
     mm.add_argument("--note", default="stage A, 7 pairs, zone = candle + next wick, stop at origin swing")
+    mm.add_argument("--stage", choices=["A", "S2", "S3", "S4", "S5"], default="A")
 
     sub.add_parser("data-manifest", help="write data_manifest.csv: SHA-256 of every stored M1 month (runs verify it)")
 
@@ -94,13 +99,22 @@ def main(argv=None) -> int:
     if a.cmd == "grid":
         import time
 
+        from ta import s2, s3, s4, s5
         from ta.backtest import grid
         from ta.data.store import verified_snapshot
-        from ta.strategy import stage_a
-        t0, cfgs, snap = time.time(), stage_a(), verified_snapshot()
-        for eps, cfg in zip(grid(cfgs, a.pairs, "research", a.workers), cfgs):
-            print(_report(eps, cfg, a.pairs, "research", a.note, snap))
+        from ta.strategy import stage_a, stage_b
+        cfgs = {"A": stage_a, "B": stage_b, "S2": s2.grid, "S3": s3.grid, "S4": s4.grid, "S5": s5.grid}[a.stage]()
+        t0, snap = time.time(), verified_snapshot()
+        # S5 (docs/13 §7): each instrument runs alone; FX stages run every config on --pairs
+        runs = [([c for c in cfgs if c.instrument == i], [i]) for i in sorted({c.instrument for c in cfgs})] \
+            if a.stage == "S5" else [(cfgs, a.pairs)]
+        for cs, pairs in runs:
+            for eps, cfg in zip(grid(cs, pairs, "research", a.workers), cs):
+                print(_report(eps, cfg, pairs, "research", a.note, snap))
         print(f"{len(cfgs)} configs in {time.time() - t0:.0f} s")
+    if a.cmd == "review-s4":
+        from ta.review import build_s4
+        print(build_s4())
     if a.cmd == "report":
         from pathlib import Path
 
@@ -108,7 +122,7 @@ def main(argv=None) -> int:
         print(build(Path(a.run)))
     if a.cmd == "m4":
         from ta.m4 import run as m4
-        print(m4(a.note))
+        print(m4(a.note, a.stage))
     if a.cmd == "data-manifest":
         from ta.data.store import MANIFEST, manifest
         m = manifest()
@@ -119,7 +133,7 @@ def main(argv=None) -> int:
         for r in rows():
             print(f"{r['run_id']}  {r['git']:>16}  {r['period']:>8}  {r['pairs']:<24}  episodes={r['episodes']:>5}  "
                   f"filled={r['filled']:>5}  {r['note']}")
-        print(f"trials (distinct configs): {trials()} of the 250 budget")
+        print(f"trials (distinct configs): {trials()} in total (budget: 250 per strategy; the DSR uses the total)")
     if a.cmd == "audit":
         from pathlib import Path
 

@@ -11,6 +11,18 @@ Phase 1 findings: [../research/RESEARCH_REPORT.md](../research/RESEARCH_REPORT.m
 | [03_VALIDATION.md](03_VALIDATION.md) | Data splits, parameter grid, statistics, pass/fail criteria, forward test |
 | [04_EXECUTION_AND_INFRA.md](04_EXECUTION_AND_INFRA.md) | Forward test on Dukascopy JForex demo (Pepperstone cTrader as the live alternative), risk controls, kill switch, repo layout, ops |
 | [05_FAITHFULNESS_REVIEW.md](05_FAITHFULNESS_REVIEW.md) | M2 review rounds: your verdicts vs the transcript counter-check, and the rule fixes they led to |
+| [06_STRATEGY_S2.md](06_STRATEGY_S2.md) | Strategy 2 (liquidity-sweep reversal): frozen rules (§11: M1 entry) and grid |
+| [07_S1_NO_GO.md](07_S1_NO_GO.md) | S1 result at M4: NO-GO, what broke and where |
+| [08_S2_NO_GO.md](08_S2_NO_GO.md) | S2 result at M4: NO-GO, loses before costs |
+| [09_STRATEGY_S3.md](09_STRATEGY_S3.md) | Strategy 3 (Asia-range sweep, London reversal): frozen rules and grid |
+| [10_S3_NO_GO.md](10_S3_NO_GO.md) | S3 result at M4: NO-GO, loses with confidence; stop rule triggered |
+| [11_STRATEGY_S4.md](11_STRATEGY_S4.md) | Strategy 4 (London breakout of the Asia range with the H4/H1 trend): frozen rules and grid |
+| [12_S4_NO_GO.md](12_S4_NO_GO.md) | S4 result at M4: NO-GO, loses with confidence; H1 confirmation adds nothing |
+| [13_STRATEGY_S5.md](13_STRATEGY_S5.md) | Strategy 5 (US open range breakout on S&P 500, NASDAQ 100, gold): frozen rules (NASDAQ 100, 12 configs), data, protocol for new instruments |
+| [14_S5_NO_GO.md](14_S5_NO_GO.md) | S5 result at M4: NO-GO, no edge (EV slightly below zero, not significant) |
+| [15_S5_ALL_DATA.md](15_S5_ALL_DATA.md) | S5 rules on all data incl. 2021–2026, NASDAQ 100 / gold / GBPUSD, with and without costs (exploratory; opens the out-of-sample years) |
+| [16_CHEAPER_EXECUTION.md](16_CHEAPER_EXECUTION.md) | NASDAQ 100 rules re-costed at Pepperstone CFD and MNQ futures costs (cost is no longer the limit, the edge is); gold at MGC futures costs fails (exploratory) |
+| [17_NAS_MNQ_TEST.md](17_NAS_MNQ_TEST.md) | NASDAQ 100 rules, full engine at MNQ micro-futures costs, 2014–2026: walk-forward +0.05R (t 1.2), Deflated Sharpe fails; not a system yet (exploratory) |
 
 ---
 
@@ -52,6 +64,8 @@ Phase 1 findings: [../research/RESEARCH_REPORT.md](../research/RESEARCH_REPORT.m
 | **M7** | Live, micro risk 0.1% for 2 months, then 0.5% | Live results inside the Monte Carlo band; no execution incidents |
 
 If M5 is NO-GO, M4–M5 repeat for **S2 (liquidity-sweep reversal)** and then **S3 (Asia-range session model)**, on the same data, engine and protocol.
+
+**Stop rule (agreed 2026-10-29).** If S2 and S3 both end NO-GO, the project stops here and we discuss a different approach. No further variants of S1–S3 are tried: each extra variant makes a lucky-looking result more likely, and the trial budget exists to prevent that. A strategy reaches NO-GO at M4 already (no robust candidate, or the walk-forward fails) without spending validation data.
 
 ## 4. What I need from you
 

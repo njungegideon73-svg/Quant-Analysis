@@ -4,8 +4,9 @@ An episode is what one zone would do on its own: the M15 close where its limit o
 the order stops being valid, and the first M15 bar where it could fill. One-setup-per-pair and the portfolio
 limits are applied afterwards (backtest.py). An order placed at the close of bar p can fill from bar p+1.
 """
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from itertools import product
+from typing import ClassVar
 
 import numpy as np
 import pandas as pd
@@ -20,6 +21,8 @@ NY, LDN = "America/New_York", "Europe/London"
 
 @dataclass(frozen=True)
 class Config:
+    pools: ClassVar[bool] = False  # S2 needs equal highs/lows on every run (not a dataclass field: hash unchanged)
+    h1_bias: ClassVar[bool] = False  # S4 needs the H1 structure state
     # Stage A grid (docs/03 §3)
     N: int = 3
     m: float = 1.0
@@ -56,6 +59,16 @@ def stage_a() -> list[Config]:
     """The declared Stage A grid (docs/03 §3): 216 configs, filters at their defaults."""
     return [Config(N=N, m=m, b=b, K=K, entry_at=e, target=t) for N, m, b, K, e, t in
             product((2, 3, 5), (1.0, 1.5), (0.05, 0.10, 0.20), (48, 96, 192), ("proximal", "mid"), ("T1", "T2"))]
+
+
+STAGE_B_BASE = Config(N=5, m=1.5, b=0.20, K=96, entry_at="mid", target="T1")  # M4 Stage A pick (T1); T2 had none
+
+
+def stage_b() -> list[Config]:
+    """docs/03 §3 Stage B: each filter flipped once from the Stage A pick, widen first (7 configs)."""
+    flips = ({"min_stop_mode": "widen"}, {"session": "all"}, {"zone_pick": "extreme"}, {"liq_veto": True},
+             {"zone_body": True}, {"htf_location": True}, {"k": 0.5})
+    return [replace(STAGE_B_BASE, **f) for f in flips]
 
 
 def blackout_days(start, end) -> tuple[set, set]:
@@ -103,12 +116,19 @@ def prepare_frames(pair, m15, h4, cfg: Config) -> dict:
     _, h4bar = structure(h4h, h4l, h4c, pivots(h4h, h4l, cfg.N_h4))
     ix = htf_index(m15.close_ts, h4.close_ts)
     take = lambda arr, fill: np.where(ix >= 0, np.asarray(arr)[ix.clip(0)], fill)
+    if cfg.h1_bias:  # H1 bars resampled from M15; state at the last H1 bar closed by each M15 close
+        g = m15.groupby(m15.ts.dt.floor("1h"))
+        h1h, h1l, h1c = g.mid_h.max().to_numpy(), g.mid_l.min().to_numpy(), g.mid_c.last().to_numpy()
+        _, h1bar = structure(h1h, h1l, h1c, pivots(h1h, h1l, cfg.N_h4))
+        ix1 = htf_index(m15.close_ts, g.close_ts.max())
+        h1state = np.where(ix1 >= 0, h1bar.state.to_numpy()[ix1.clip(0)], 0)
     fill_ok, black = time_masks(m15.ts, cfg.session)
     return {"pair": pair, "ts": m15.ts, "close_ts": m15.close_ts, "o": o, "h": h, "l": l, "c": c,
             "bid_h": m15.bid_h.to_numpy(), "ask_l": m15.ask_l.to_numpy(), "atr": a, "zones": z,
-            "eql": equal_levels(h, l, piv, a) if cfg.liq_veto else None,
+            "piv": piv, "eql": equal_levels(h, l, piv, a) if cfg.liq_veto or cfg.pools else None,
             "h4state": take(h4bar.state, 0), "h4eq": take(h4bar["eq"], np.nan),
-            "h4atr": take(atr(h4h, h4l, h4c), np.nan), "fillable": fill_ok, "blackout": black}
+            "h4atr": take(atr(h4h, h4l, h4c), np.nan), "fillable": fill_ok, "blackout": black,
+            "h1state": h1state if cfg.h1_bias else None}
 
 
 def episodes(f: dict, cfg: Config) -> pd.DataFrame:

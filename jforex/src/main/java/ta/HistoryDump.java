@@ -39,7 +39,7 @@ public class HistoryDump {
             System.exit(2);
         }
         Set<Instrument> instruments = new HashSet<>();
-        for (String[] j : jobs) instruments.add(Instrument.fromString(j[0].substring(0, 3) + "/" + j[0].substring(3)));
+        for (String[] j : jobs) instruments.add(instrument(j[0]));
         client.setSubscribedInstruments(instruments);
 
         client.startStrategy(new IStrategy() {
@@ -65,9 +65,15 @@ public class HistoryDump {
         Thread.currentThread().join();  // the strategy exits the JVM when done
     }
 
+    /** EURUSD -> EUR/USD, XAUUSD -> XAU/USD, USA500IDXUSD -> USA500.IDX/USD (JForex's CFD index names). */
+    static Instrument instrument(String pair) {
+        if (pair.endsWith("IDXUSD")) return Instrument.fromString(pair.replace("IDXUSD", ".IDX/USD"));
+        return Instrument.fromString(pair.substring(0, 3) + "/" + pair.substring(3));
+    }
+
     static void dump(IHistory h, Path out, String pair, YearMonth ym) throws Exception {
         long t0 = System.currentTimeMillis();
-        Instrument ins = Instrument.fromString(pair.substring(0, 3) + "/" + pair.substring(3));
+        Instrument ins = instrument(pair);
         long from = ym.atDay(1).atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli();
         long to = ym.plusMonths(1).atDay(1).atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli() - 60_000;
         List<IBar> bid = h.getBars(ins, Period.ONE_MIN, OfferSide.BID, Filter.NO_FILTER, from, to);

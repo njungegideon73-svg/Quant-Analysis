@@ -10,8 +10,11 @@ PAIRS = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD"]
 START_YEAR = 2010
 
 
+CFDS = {"USA500IDXUSD": 0.1, "USATECHIDXUSD": 0.1, "XAUUSD": 0.1}  # S5 (docs/13): S&P 500, NASDAQ 100, gold; "pip" = 0.1
+
+
 def pip_size(pair: str) -> float:
-    return 0.01 if pair.endswith("JPY") else 0.0001
+    return CFDS.get(pair) or (0.01 if pair.endswith("JPY") else 0.0001)
 
 
 def load_env(path: Path = ROOT / ".env") -> dict:

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from ta.config import pip_size
+from ta.config import CFDS, pip_size
 from ta.data.store import read_m1
 
 NY = "America/New_York"
@@ -30,6 +30,8 @@ class M1:
     al: np.ndarray
     flats: np.ndarray  # Friday 16:30 NY (weekend flatten), int64 ns
     rolls: np.ndarray  # 17:00 NY rollovers (swap), int64 ns
+    bc: np.ndarray | None = None  # closes, for M1 structure (S2); absent in small test frames
+    ac: np.ndarray | None = None
 
     @classmethod
     def from_frame(cls, df: pd.DataFrame) -> "M1":
@@ -41,7 +43,8 @@ class M1:
             return (days[sel] + pd.Timedelta(hours=hh, minutes=mm)).tz_convert("UTC").as_unit("ns").asi8
 
         return cls(ts, *(df[c].to_numpy() for c in ("bid_o", "bid_h", "bid_l", "ask_o", "ask_h", "ask_l")),
-                   flats=stamp(16, 30, days.day_of_week == 4), rolls=stamp(17, 0, days.day_of_week < 5))
+                   flats=stamp(16, 30, days.day_of_week == 4), rolls=stamp(17, 0, days.day_of_week < 5),
+                   **({"bc": df.bid_c.to_numpy(), "ac": df.ask_c.to_numpy()} if "bid_c" in df else {}))
 
     @classmethod
     def load(cls, pair: str) -> "M1":
@@ -60,7 +63,8 @@ class Costs:
     @classmethod
     def for_pair(cls, pair, fill_through_pips=0.1, slip_pips=0.2, commission_per_lot=3.5, swap_pips=0.3):
         p = pip_size(pair)
-        return cls(p, pair.endswith("USD"), fill_through_pips * p, slip_pips * p, commission_per_lot, swap_pips * p)
+        usd_quote = pair.endswith("USD") and pair not in CFDS  # CFDs pay commission on notional (per 100k USD)
+        return cls(p, usd_quote, fill_through_pips * p, slip_pips * p, commission_per_lot, swap_pips * p)
 
     def commission(self, price):
         """Per side, in quote currency per unit of base."""
@@ -74,11 +78,12 @@ def first_fill(m1: M1, lo: int, hi: int, d: int, entry: float, c: Costs) -> int:
     return lo + int(k[0]) if k.size else -1
 
 
-def exit_trade(m1: M1, i: int, d: int, entry: float, stop: float, target: float, c: Costs):
+def exit_trade(m1: M1, i: int, d: int, entry: float, stop: float, target: float, c: Costs, flat_by: int = 0):
     """Walk forward from fill minute i. The stop counts from the fill minute itself, the target only from the next
-    minute, a stop and target in the same minute is a stop, and the Friday 16:30 NY minute flattens at its open.
-    Returns (exit_minute, reason, exit_price), or None if the data ends first."""
+    minute, a stop and target in the same minute is a stop, and the Friday 16:30 NY minute (or the first minute at or
+    after `flat_by`, ns, if earlier: S3's 17:00 UK) flattens at its open. Returns (exit_minute, reason, exit_price), or None if the data ends first."""
     flat = m1.flats[np.searchsorted(m1.flats, m1.ts[i], side="right")]
+    flat = min(flat, flat_by) if flat_by else flat
     n = len(m1.ts)
     for s in range(i, n, CHUNK):
         e = min(n, s + CHUNK)

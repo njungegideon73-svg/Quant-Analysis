@@ -12,13 +12,19 @@ from itertools import repeat
 import numpy as np
 import pandas as pd
 
+from ta import s2, s4, s5
 from ta.broker import M1, Costs, exit_trade, first_fill, trade_r
-from ta.config import DATA, PAIRS, pip_size
+from ta.config import CFDS, DATA, PAIRS, pip_size
 from ta.data.store import read_m1
 from ta.registry import guard
 from ta.strategy import Config, episodes, prepare_frames
 
 PERIODS = {"research": (2010, 2019), "validation": (2020, 2023), "holdout": (2024, 2100)}  # docs/03 §1
+CFD_PERIODS = {"research": (2014, 2020), "validation": (2021, 2023), "holdout": (2024, 2100)}  # docs/13 §8
+
+
+def span(pair: str, period: str) -> tuple[int, int]:
+    return (CFD_PERIODS if pair in CFDS else PERIODS)[period]
 
 M15_NS = 15 * 60 * 10**9
 
@@ -29,18 +35,27 @@ def costs(pair: str, cfg: Config) -> Costs:
 
 def resolve(f: dict, m1: M1, cfg: Config) -> pd.DataFrame:
     """episodes() plus, for those that touch, the fill minute, exit and net R (standalone)."""
-    ep = episodes(f, cfg)
+    minute = isinstance(cfg, (s2.S2Config, s5.S5Config))  # orders on M1: the episode carries times and fill minute
+    if minute:
+        ep = (s5 if isinstance(cfg, s5.S5Config) else s2).episodes(f, m1, cfg)
+    else:
+        ep = s4.episodes(f, cfg) if isinstance(cfg, s4.S4Config) else episodes(f, cfg)
     bar_ns = f["ts"].astype("datetime64[ns, UTC]").astype("int64").to_numpy()
     c, recs = costs(f["pair"], cfg), []
     for r in ep.itertuples(index=False):
         rec = {"pair": f["pair"], "zone_ts": bar_ns[r.zone_t] + M15_NS, "place_ts": bar_ns[r.place_bar] + M15_NS,
                "end_ts": bar_ns[r.end_bar] + M15_NS, "fill_ts": -1, "exit_ts": -1, "reason": "no_fill"}
+        if minute:
+            rec |= {"zone_ts": r.zone_ns, "place_ts": r.place_ns, "end_ts": r.end_ns}
         if r.fill_bar >= 0:
-            lo, hi = np.searchsorted(m1.ts, [bar_ns[r.fill_bar], bar_ns[r.fill_bar] + M15_NS])
-            i = first_fill(m1, lo, hi, r.dir, r.entry, c)
+            if minute:
+                i = r.fill_min
+            else:
+                lo, hi = np.searchsorted(m1.ts, [bar_ns[r.fill_bar], bar_ns[r.fill_bar] + M15_NS])
+                i = first_fill(m1, lo, hi, r.dir, r.entry, c)
             assert i >= 0, "M15 touch without an M1 fill: M15 and M1 data disagree"
             rec |= {"fill_ts": m1.ts[i], "reason": "open"}
-            x = exit_trade(m1, i, r.dir, r.entry, r.stop, r.target, c)
+            x = exit_trade(m1, i, r.dir, r.entry, r.stop, r.target, c, getattr(r, "flat_ns", 0))  # S3/S4: 17:00 UK
             if x is not None:
                 j, reason, px = x
                 rec |= {"exit_ts": m1.ts[j], "reason": reason, "exit_px": px} | trade_r(m1, i, j, r.dir, r.entry, r.stop, px, c)
@@ -112,9 +127,9 @@ def _room(open_pos: dict, pair: str, d: int, cfg: Config) -> bool:
 
 def load(pair: str, period: str, root=DATA):
     """M15, H4 and M1 for a period: everything from the first year (warm-up) up to the period's end, nothing after."""
-    end = pd.Timestamp(f"{PERIODS[period][1] + 1}-01-01", tz="UTC")
+    end = pd.Timestamp(f"{span(pair, period)[1] + 1}-01-01", tz="UTC")
     m15, h4 = (pd.read_parquet(root / "derived" / pair / f"{tf}.parquet") for tf in ("M15", "H4"))
-    raw = read_m1(pair, years=range(2000, PERIODS[period][1] + 1), root=root)
+    raw = read_m1(pair, years=range(2000, span(pair, period)[1] + 1), root=root)
     return m15[m15.close_ts <= end].reset_index(drop=True), h4[h4.close_ts <= end].reset_index(drop=True), \
         M1.from_frame(raw[raw.ts < end].sort_values("ts").reset_index(drop=True))
 
@@ -123,10 +138,10 @@ def pair_runs(pair: str, cfgs: list[Config], period: str) -> list[pd.DataFrame]:
     """resolve() for every config on one pair. Features only depend on a few params, so they are built once per
     distinct set (the Stage A grid needs 6 builds for 216 configs). Episodes are kept if their zone is in the period."""
     m15, h4, m1 = load(pair, period)
-    start = pd.Timestamp(f"{PERIODS[period][0]}-01-01", tz="UTC").value
+    start = pd.Timestamp(f"{span(pair, period)[0]}-01-01", tz="UTC").value
     feats, out = {}, []
     for cfg in cfgs:
-        key = (cfg.N, cfg.k, cfg.m, cfg.zone_body, cfg.N_h4, cfg.session, cfg.liq_veto)
+        key = (cfg.N, cfg.k, cfg.m, cfg.zone_body, cfg.N_h4, cfg.session, cfg.liq_veto, cfg.pools, cfg.h1_bias)
         if key not in feats:
             feats[key] = prepare_frames(pair, m15, h4, cfg)
         r = resolve(feats[key], m1, cfg)
